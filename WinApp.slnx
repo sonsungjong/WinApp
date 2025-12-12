@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="WinApp/WinApp.csproj" />
+  <Project Path="WPFWeb/WPFWeb.csproj" />
+</Solution>

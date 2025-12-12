@@ -20,6 +20,7 @@ namespace WPFWeb.View
     public partial class MainView : Window
     {
         private MainViewModel? m_viewModel => DataContext as MainViewModel;
+        private bool m_isFullScreen = false;
 
         public MainView()
         {
@@ -86,6 +87,33 @@ namespace WPFWeb.View
                 m_viewModel.IsLoading = false;
                 m_viewModel.UpdateUrl(webView.Source?.ToString() ?? string.Empty);
                 m_viewModel.UpdateNavigationState(webView.CanGoBack, webView.CanGoForward);
+            }
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F11)
+            {
+                ToggleFullScreen();
+                e.Handled = true;
+            }
+        }
+
+        private void ToggleFullScreen()
+        {
+            if (!m_isFullScreen)
+            {
+                titleBarRow.Height = new GridLength(0);
+                navigationBarRow.Height = new GridLength(0);
+                mainBorder.CornerRadius = new CornerRadius(1, 1, 1, 1);
+                m_isFullScreen = true;
+            }
+            else
+            {
+                titleBarRow.Height = new GridLength(40);
+                navigationBarRow.Height = new GridLength(50);
+                mainBorder.CornerRadius = new CornerRadius(12.5, 12.5, 1, 1);
+                m_isFullScreen = false;
             }
         }
 

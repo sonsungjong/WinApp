@@ -12,13 +12,15 @@
         WindowStyle="None"
         ResizeMode="CanResizeWithGrip"
         Title="MainView" Height="450" Width="800"
-        Icon="pack://application:,,,/Resources/app.ico">
+        Icon="pack://application:,,,/Resources/app.ico"
+        KeyDown="Window_KeyDown">
 
     <Window.DataContext>
         <viewModel:MainViewModel />
     </Window.DataContext>
 
     <Border
+        x:Name="mainBorder"
         Background="White"
         CornerRadius="12.5, 12.5, 1, 1"
         BorderThickness="2"
@@ -27,13 +29,14 @@
 
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="40"/>
-                <RowDefinition Height="50"/>
+                <RowDefinition Height="40" x:Name="titleBarRow"/>
+                <RowDefinition Height="50" x:Name="navigationBarRow"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <!-- Title Bar -->
             <Border Grid.Row="0" Background="#2D2D30" 
+            x:Name="titleBar"
             CornerRadius="10,10,0,0"
             MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid>
@@ -72,7 +75,8 @@
             </Border>
 
             <!-- Navigation Bar -->
-            <Border Grid.Row="1" Background="#F5F5F5" Padding="10,5">
+            <Border Grid.Row="1" Background="#F5F5F5" Padding="10,5"
+            x:Name="navigationBar">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>

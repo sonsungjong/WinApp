@@ -93,7 +93,14 @@ namespace WPFWeb.View
         {
             if (e.ChangedButton == MouseButton.Left)
             {
-                DragMove();
+                if (e.ClickCount == 2)
+                {
+                    WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+                }
+                else
+                {
+                    DragMove();
+                }
             }
         }
 

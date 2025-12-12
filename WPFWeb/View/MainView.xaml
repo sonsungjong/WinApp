@@ -10,6 +10,7 @@
         Background="Transparent"
         AllowsTransparency="True"
         WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
         Title="MainView" Height="450" Width="800"
         Icon="pack://application:,,,/Resources/app.ico">
 
@@ -19,8 +20,8 @@
 
     <Border
         Background="White"
-        CornerRadius="10, 10, 1, 1"
-        BorderThickness="1"
+        CornerRadius="12.5, 12.5, 1, 1"
+        BorderThickness="2"
         BorderBrush="BlueViolet"
         >
 

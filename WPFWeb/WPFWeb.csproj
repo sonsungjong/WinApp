@@ -9,6 +9,8 @@
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

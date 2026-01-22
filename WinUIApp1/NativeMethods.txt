@@ -1,0 +1,7 @@
+SetWindowPos
+GetWindowLongPtr
+SetWindowLongPtr
+GetDpiForWindow
+MonitorFromWindow
+GetMonitorInfo
+ShowWindow

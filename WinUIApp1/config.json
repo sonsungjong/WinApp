@@ -1,10 +1,10 @@
 {
-  "exclude": [
-    "**/bin",
-    "**/bower_components",
-    "**/jspm_packages",
-    "**/node_modules",
-    "**/obj",
-    "**/platforms"
-  ]
+  "cameraIp": "192.168.0.100",
+  "cameraPort": 554,
+  "tcpControlPort": 8000,
+  "rtspUrl": "rtsp://192.168.0.100:554/stream",
+  "recordingPath": "C:\\Recordings",
+  "maxStorageMB": 10240,
+  "encryptionKey": "your-32-byte-encryption-key-here",
+  "recordingSegmentMinutes": 10
 }

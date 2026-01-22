@@ -33,7 +33,7 @@ public sealed partial class MainWindow : Window
         // 타이머 설정
         _hideControlBarTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(3)
+            Interval = TimeSpan.FromSeconds(1)
         };
         _hideControlBarTimer.Tick += (s, e) =>
         {
@@ -80,11 +80,25 @@ public sealed partial class MainWindow : Window
         if (position.Y > height - 100)
         {
             ShowControlBar();
+            _hideControlBarTimer.Stop();
         }
+        else
+        {
+            // 하단 영역을 벗어나면 타이머 시작 (1초 후 숨김)
+            if (_isControlBarVisible && !_hideControlBarTimer.IsEnabled)
+            {
+                _hideControlBarTimer.Start();
+            }
+        }
+    }
 
-        // 타이머 리셋
+    /// <summary>
+    /// 마우스가 창을 벗어나면 컨트롤바 숨기기
+    /// </summary>
+    private void RootGrid_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
         _hideControlBarTimer.Stop();
-        _hideControlBarTimer.Start();
+        HideControlBar();
     }
 
     /// <summary>

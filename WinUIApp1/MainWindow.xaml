@@ -12,7 +12,8 @@
 
     <Grid x:Name="RootGrid" 
           Background="Black"
-          PointerMoved="RootGrid_PointerMoved">
+          PointerMoved="RootGrid_PointerMoved"
+          PointerExited="RootGrid_PointerExited">
         
         <!-- 비디오 렌더링 영역 (SwapChainPanel) -->
         <SwapChainPanel x:Name="VideoPanel"

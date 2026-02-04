@@ -49,27 +49,15 @@
                     <StackPanel Orientation="Horizontal" 
                         HorizontalAlignment="Right" 
                         Margin="0,0,10,0">
-                        <Button Content="─" 
-                        Width="30" Height="30" 
-                        Background="Transparent" 
-                        Foreground="White" 
-                        BorderThickness="0"
-                        Click="Minimize_Click"
-                        FontSize="16"/>
-                        <Button Content="□" 
-                        Width="30" Height="30" 
-                        Background="Transparent" 
-                        Foreground="White" 
-                        BorderThickness="0"
-                        Click="Maximize_Click"
-                        FontSize="16"/>
-                        <Button Content="✕" 
-                        Width="30" Height="30" 
-                        Background="Transparent" 
-                        Foreground="White" 
-                        BorderThickness="0"
-                        Click="Close_Click"
-                        FontSize="16"/>
+                        <Button Content="─"
+                        Style="{StaticResource TitleBarButton}"
+                        Click="Minimize_Click"/>
+                        <Button Content="□"
+                        Style="{StaticResource TitleBarButton}"
+                        Click="Maximize_Click"/>
+                        <Button Content="✕"
+                        Style="{StaticResource TitleBarButton}"
+                        Click="Close_Click"/>
                     </StackPanel>
                 </Grid>
             </Border>

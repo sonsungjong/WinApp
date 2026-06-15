@@ -1,9 +1,18 @@
 <Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="D2DLL/D2DLL.vcxproj" Id="65278365-8def-4245-99a7-aead3c5ae9c5" />
   <Project Path="MVVM_RJ/MVVM_RJ.csproj" Id="f6bab579-c10e-4c33-b169-db7a164a29d5" />
   <Project Path="WinApp/WinApp.csproj" />
   <Project Path="WinUIApp1/WinUIApp1.csproj" Id="0999e1f9-0001-438b-958d-599c113cd0b1">
-    <Platform Project="x64" />
-    <Deploy />
+    <Platform Solution="*|Any CPU" Project="x64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Deploy Solution="*|Any CPU" />
   </Project>
+  <Project Path="WPFD2D/WPFD2D.csproj" Id="56922f45-80a6-4010-a509-57b361dcac71" />
   <Project Path="WPFWeb/WPFWeb.csproj" />
 </Solution>

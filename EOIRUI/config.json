@@ -1,0 +1,10 @@
+{
+  "eo_cv_ip": "127.0.0.1",
+  "eo_cv_port": 55555,
+  "ir_cv_ip": "127.0.0.1",
+  "ir_cv_port": 55556,
+  "eo_data_ip": "127.0.0.1",
+  "eo_data_port": 55557,
+  "ir_data_ip": "127.0.0.1",
+  "ir_data_port": 55558
+}

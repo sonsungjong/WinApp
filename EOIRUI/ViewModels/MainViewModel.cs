@@ -1,5 +1,3 @@
-using System.Collections.ObjectModel;
-using System.Text;
 using System.Windows.Input;
 using EOIRUI.Models;
 using EOIRUI.Services;
@@ -8,93 +6,54 @@ namespace EOIRUI.ViewModels;
 
 public sealed class MainViewModel : ViewModelBase, IDisposable
 {
-    private const int MaxLogEntries = 500;
-
-    private readonly IUdpService _udpService;
+    private readonly ICameraDataUdpServer _cameraDataUdpServer;
+    private readonly AppConfig _config;
     private readonly SynchronizationContext? _uiContext;
-    private readonly AsyncRelayCommand _startCommand;
-    private readonly AsyncRelayCommand _stopCommand;
-    private readonly AsyncRelayCommand _sendCommand;
-    private readonly RelayCommand _clearLogCommand;
-    private string _localPort = "9000";
-    private string _remoteHost = "127.0.0.1";
-    private string _remotePort = "9001";
-    private string _outgoingMessage = string.Empty;
-    private string _statusMessage = "닫힘";
-    private bool _isListening;
+    private readonly AsyncRelayCommand _startServerCommand;
+    private readonly AsyncRelayCommand _stopServerCommand;
+    private string _statusMessage = "UDP 서버 시작 준비";
+    private bool _isServerRunning;
+    private bool _isBusy;
     private bool _isDisposed;
+    private int _statisticsRefreshScheduled;
+    private long _eoDataPackets;
+    private long _eoDataBytes;
+    private long _irDataPackets;
+    private long _irDataBytes;
 
-    public MainViewModel(IUdpService udpService)
+    public MainViewModel(ICameraDataUdpServer cameraDataUdpServer, AppConfig config)
     {
-        _udpService = udpService ?? throw new ArgumentNullException(nameof(udpService));
+        _cameraDataUdpServer = cameraDataUdpServer ?? throw new ArgumentNullException(nameof(cameraDataUdpServer));
+        _config = config ?? throw new ArgumentNullException(nameof(config));
         _uiContext = SynchronizationContext.Current;
 
-        _udpService.DatagramReceived += OnDatagramReceived;
-        _udpService.ReceiveFaulted += OnReceiveFaulted;
+        EoCamera = new CameraFeedViewModel(
+            "EO CAMERA",
+            config.EoCvIp,
+            config.EoCvPort,
+            config.EoDataIp,
+            config.EoDataPort);
+        IrCamera = new CameraFeedViewModel(
+            "IR CAMERA",
+            config.IrCvIp,
+            config.IrCvPort,
+            config.IrDataIp,
+            config.IrDataPort);
 
-        _startCommand = new AsyncRelayCommand(_ => StartAsync(), _ => CanStart());
-        _stopCommand = new AsyncRelayCommand(_ => StopAsync(), _ => IsListening);
-        _sendCommand = new AsyncRelayCommand(_ => SendAsync(), _ => CanSend());
-        _clearLogCommand = new RelayCommand(_ => ClearLog(), _ => LogEntries.Count > 0);
+        _cameraDataUdpServer.PacketReceived += OnPacketReceived;
+        _cameraDataUdpServer.ListenerFaulted += OnListenerFaulted;
+
+        _startServerCommand = new AsyncRelayCommand(_ => StartServerAsync(), _ => CanStartServer());
+        _stopServerCommand = new AsyncRelayCommand(_ => StopServerAsync(), _ => CanStopServer());
     }
 
-    public ObservableCollection<UdpLogEntry> LogEntries { get; } = [];
+    public CameraFeedViewModel EoCamera { get; }
 
-    public ICommand StartCommand => _startCommand;
+    public CameraFeedViewModel IrCamera { get; }
 
-    public ICommand StopCommand => _stopCommand;
+    public ICommand StartServerCommand => _startServerCommand;
 
-    public ICommand SendCommand => _sendCommand;
-
-    public ICommand ClearLogCommand => _clearLogCommand;
-
-    public string LocalPort
-    {
-        get => _localPort;
-        set
-        {
-            if (SetProperty(ref _localPort, value))
-            {
-                RaiseCommandStates();
-            }
-        }
-    }
-
-    public string RemoteHost
-    {
-        get => _remoteHost;
-        set
-        {
-            if (SetProperty(ref _remoteHost, value))
-            {
-                RaiseCommandStates();
-            }
-        }
-    }
-
-    public string RemotePort
-    {
-        get => _remotePort;
-        set
-        {
-            if (SetProperty(ref _remotePort, value))
-            {
-                RaiseCommandStates();
-            }
-        }
-    }
-
-    public string OutgoingMessage
-    {
-        get => _outgoingMessage;
-        set
-        {
-            if (SetProperty(ref _outgoingMessage, value))
-            {
-                RaiseCommandStates();
-            }
-        }
-    }
+    public ICommand StopServerCommand => _stopServerCommand;
 
     public string StatusMessage
     {
@@ -102,20 +61,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         private set => SetProperty(ref _statusMessage, value);
     }
 
-    public bool IsListening
+    public bool IsServerRunning
     {
-        get => _isListening;
+        get => _isServerRunning;
         private set
         {
-            if (SetProperty(ref _isListening, value))
+            if (SetProperty(ref _isServerRunning, value))
             {
-                OnPropertyChanged(nameof(IsNotListening));
                 RaiseCommandStates();
             }
         }
     }
 
-    public bool IsNotListening => !IsListening;
+    public Task InitializeAsync() => StartServerAsync();
 
     public void Dispose()
     {
@@ -125,133 +83,140 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         _isDisposed = true;
-        _udpService.DatagramReceived -= OnDatagramReceived;
-        _udpService.ReceiveFaulted -= OnReceiveFaulted;
-        _udpService.Dispose();
+        _cameraDataUdpServer.PacketReceived -= OnPacketReceived;
+        _cameraDataUdpServer.ListenerFaulted -= OnListenerFaulted;
+        _cameraDataUdpServer.Dispose();
     }
 
-    private bool CanStart() => !IsListening && TryParsePort(LocalPort, out _);
+    private bool CanStartServer() => !IsServerRunning && !_isBusy;
 
-    private bool CanSend()
-    {
-        return IsListening
-            && !string.IsNullOrWhiteSpace(RemoteHost)
-            && TryParsePort(RemotePort, out _)
-            && !string.IsNullOrEmpty(OutgoingMessage);
-    }
+    private bool CanStopServer() => IsServerRunning && !_isBusy;
 
-    private async Task StartAsync()
+    private async Task StartServerAsync()
     {
-        if (!TryParsePort(LocalPort, out var localPort))
+        if (!CanStartServer())
         {
-            StatusMessage = "올바른 수신 포트를 입력하세요.";
             return;
         }
 
-        try
-        {
-            await _udpService.StartAsync(localPort);
-            IsListening = true;
-            StatusMessage = $"UDP 0.0.0.0:{localPort} 수신 중";
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = $"열기 실패: {exception.Message}";
-        }
-    }
+        _isBusy = true;
+        RaiseCommandStates();
+        StatusMessage = "EO/IR 데이터 UDP 포트를 여는 중...";
 
-    private async Task StopAsync()
-    {
         try
         {
-            await _udpService.StopAsync();
-            StatusMessage = "닫힘";
+            await _cameraDataUdpServer.StartAsync();
+            IsServerRunning = true;
+            StatusMessage = $"데이터 UDP 수신 중 · EO {_config.EoDataPort} / IR {_config.IrDataPort}";
         }
         catch (Exception exception)
         {
-            StatusMessage = $"닫기 실패: {exception.Message}";
+            IsServerRunning = false;
+            StatusMessage = $"UDP 서버 시작 실패: {exception.Message}";
         }
         finally
         {
-            IsListening = false;
+            _isBusy = false;
+            RaiseCommandStates();
         }
     }
 
-    private async Task SendAsync()
+    private async Task StopServerAsync()
     {
-        if (!TryParsePort(RemotePort, out var remotePort))
+        if (!CanStopServer())
         {
-            StatusMessage = "올바른 송신 포트를 입력하세요.";
             return;
         }
 
-        var message = OutgoingMessage;
-        var data = Encoding.UTF8.GetBytes(message);
+        _isBusy = true;
+        RaiseCommandStates();
 
         try
         {
-            await _udpService.SendAsync(data, RemoteHost, remotePort);
-            AddLog(new UdpLogEntry(
-                DateTime.Now,
-                "TX",
-                $"{RemoteHost}:{remotePort}",
-                message));
-            StatusMessage = $"{data.Length}바이트 송신 완료";
+            await _cameraDataUdpServer.StopAsync();
+            IsServerRunning = false;
+            StatusMessage = "UDP 서버 중지됨";
         }
         catch (Exception exception)
         {
-            StatusMessage = $"송신 실패: {exception.Message}";
+            StatusMessage = $"UDP 서버 중지 실패: {exception.Message}";
+        }
+        finally
+        {
+            _isBusy = false;
+            RaiseCommandStates();
         }
     }
 
-    private void OnDatagramReceived(object? sender, UdpDatagramReceivedEventArgs e)
+    private void OnPacketReceived(object? sender, CameraDataPacketEventArgs e)
     {
-        var message = Encoding.UTF8.GetString(e.Data);
+        switch (e.Channel)
+        {
+            case CameraDataChannel.Eo:
+                Interlocked.Increment(ref _eoDataPackets);
+                Interlocked.Add(ref _eoDataBytes, e.Data.Length);
+                break;
+
+            case CameraDataChannel.Ir:
+                Interlocked.Increment(ref _irDataPackets);
+                Interlocked.Add(ref _irDataBytes, e.Data.Length);
+                break;
+        }
+
+        ScheduleStatisticsRefresh();
+    }
+
+    private void OnListenerFaulted(object? sender, CameraDataListenerFaultedEventArgs e)
+    {
         RunOnUiThread(() =>
         {
-            AddLog(new UdpLogEntry(
-                DateTime.Now,
-                "RX",
-                e.RemoteEndPoint.ToString(),
-                message));
-            StatusMessage = $"{e.Data.Length}바이트 수신";
+            var message = $"UDP {e.LocalPort} 수신 오류: {e.Exception.Message}";
+            StatusMessage = message;
+
+            switch (e.Channel)
+            {
+                case CameraDataChannel.Eo:
+                    EoCamera.SetDataFault(message);
+                    break;
+                case CameraDataChannel.Ir:
+                    IrCamera.SetDataFault(message);
+                    break;
+            }
         });
     }
 
-    private void OnReceiveFaulted(object? sender, Exception exception)
+    private void ScheduleStatisticsRefresh()
     {
-        RunOnUiThread(() => _ = HandleReceiveFaultAsync(exception));
-    }
-
-    private async Task HandleReceiveFaultAsync(Exception exception)
-    {
-        try
+        if (Interlocked.Exchange(ref _statisticsRefreshScheduled, 1) != 0)
         {
-            await _udpService.StopAsync();
-        }
-        finally
-        {
-            IsListening = false;
-            StatusMessage = $"수신 오류: {exception.Message}";
-        }
-    }
-
-    private void AddLog(UdpLogEntry entry)
-    {
-        LogEntries.Insert(0, entry);
-
-        while (LogEntries.Count > MaxLogEntries)
-        {
-            LogEntries.RemoveAt(LogEntries.Count - 1);
+            return;
         }
 
-        _clearLogCommand.RaiseCanExecuteChanged();
+        _ = RefreshStatisticsAsync();
     }
 
-    private void ClearLog()
+    private async Task RefreshStatisticsAsync()
     {
-        LogEntries.Clear();
-        _clearLogCommand.RaiseCanExecuteChanged();
+        await Task.Delay(200).ConfigureAwait(false);
+
+        RunOnUiThread(() =>
+        {
+            if (_isDisposed)
+            {
+                Interlocked.Exchange(ref _statisticsRefreshScheduled, 0);
+                return;
+            }
+
+            Interlocked.Exchange(ref _statisticsRefreshScheduled, 0);
+
+            EoCamera.UpdateDataStatistics(
+                Interlocked.Read(ref _eoDataPackets),
+                Interlocked.Read(ref _eoDataBytes));
+            IrCamera.UpdateDataStatistics(
+                Interlocked.Read(ref _irDataPackets),
+                Interlocked.Read(ref _irDataBytes));
+
+        });
     }
 
     private void RunOnUiThread(Action action)
@@ -267,13 +232,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void RaiseCommandStates()
     {
-        _startCommand.RaiseCanExecuteChanged();
-        _stopCommand.RaiseCanExecuteChanged();
-        _sendCommand.RaiseCanExecuteChanged();
-    }
-
-    private static bool TryParsePort(string value, out int port)
-    {
-        return int.TryParse(value, out port) && port is >= 1 and <= 65535;
+        _startServerCommand.RaiseCanExecuteChanged();
+        _stopServerCommand.RaiseCanExecuteChanged();
     }
 }

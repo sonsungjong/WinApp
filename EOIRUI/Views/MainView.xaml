@@ -4,130 +4,289 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="EO/IR UDP Console"
-        Height="640"
-        Width="960"
-        MinHeight="520"
-        MinWidth="760"
+        Title="EO/IR Monitoring Server"
+        Height="720"
+        Width="1280"
+        MinHeight="600"
+        MinWidth="960"
+        Background="#FF0B1120"
+        Foreground="#FFF1F5F9"
         WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="MinWidth" Value="88" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Foreground" Value="#FFF8FAFC" />
+            <Setter Property="Background" Value="#FF2563EB" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <Style x:Key="PortBadgeStyle" TargetType="Border">
+            <Setter Property="Padding" Value="9,4" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Background" Value="#FF334155" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+    </Window.Resources>
+
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,12">
+        <Grid Grid.Row="0" Margin="4,0,4,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock FontSize="24"
-                       FontWeight="SemiBold"
-                       Text="EO/IR UDP Console" />
-            <Border Grid.Column="1"
-                    Padding="10,5"
-                    Background="#FFE8EEF7"
-                    CornerRadius="4">
-                <TextBlock Text="{Binding StatusMessage}" />
+            <StackPanel>
+                <TextBlock FontSize="25"
+                           FontWeight="SemiBold"
+                           Text="EO / IR MONITORING" />
+                <TextBlock Margin="0,4,0,0"
+                           Foreground="#FF94A3B8"
+                           Text="Two RTSP clients / two UDP data receivers" />
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    Margin="0,3,8,3"
+                    Command="{Binding StartServerCommand}"
+                    Content="서버 시작" />
+            <Button Grid.Column="2"
+                    Margin="0,3,0,3"
+                    Background="#FF475569"
+                    Command="{Binding StopServerCommand}"
+                    Content="서버 중지" />
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Padding="12"
+                    Background="#FF1E293B"
+                    CornerRadius="8"
+                    DataContext="{Binding EoCamera}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="2,0,2,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Text="{Binding Name}" />
+                        <Border Grid.Column="1" Style="{StaticResource PortBadgeStyle}">
+                            <TextBlock FontSize="12" Foreground="#FFBFDBFE">
+                                <Run Text="VIDEO " />
+                                <Run Text="{Binding VideoIp}" />
+                                <Run Text=":" />
+                                <Run Text="{Binding VideoPort}" />
+                            </TextBlock>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource PortBadgeStyle}">
+                            <TextBlock FontSize="12" Foreground="#FFC4B5FD">
+                                <Run Text="DATA " />
+                                <Run Text="{Binding DataIp}" />
+                                <Run Text=":" />
+                                <Run Text="{Binding DataPort}" />
+                            </TextBlock>
+                        </Border>
+                    </Grid>
+
+                    <Border x:Name="EoVideoSurface"
+                            Grid.Row="1"
+                            MinHeight="360"
+                            Background="#FF020617"
+                            BorderBrush="#FF334155"
+                            BorderThickness="1"
+                            CornerRadius="5">
+                        <Grid>
+                            <Grid x:Name="EoRtspHost" />
+                            <StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock HorizontalAlignment="Center"
+                                           FontSize="22"
+                                           FontWeight="SemiBold"
+                                           Foreground="#FFCBD5E1"
+                                           Text="EO RTSP VIDEO" />
+                                <TextBlock HorizontalAlignment="Center"
+                                           Margin="0,8,0,0"
+                                           Foreground="#FF64748B"
+                                           Text="RTSP 디코더 연결 대기" />
+                            </StackPanel>
+                            <Canvas x:Name="EoDataOverlay"
+                                    Panel.ZIndex="10"
+                                    IsHitTestVisible="False" />
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2" Margin="2,10,2,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontSize="11"
+                                       Foreground="#FF64748B"
+                                       Text="VIDEO STATUS" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Foreground="#FFCBD5E1"
+                                       Text="{Binding VideoStatus}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock FontSize="11"
+                                       Foreground="#FF64748B"
+                                       Text="ADDITIONAL DATA" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Foreground="#FFCBD5E1"
+                                       Text="{Binding DataStatus}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Padding="12"
+                    Background="#FF1E293B"
+                    CornerRadius="8"
+                    DataContext="{Binding IrCamera}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="2,0,2,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Text="{Binding Name}" />
+                        <Border Grid.Column="1" Style="{StaticResource PortBadgeStyle}">
+                            <TextBlock FontSize="12" Foreground="#FFFED7AA">
+                                <Run Text="VIDEO " />
+                                <Run Text="{Binding VideoIp}" />
+                                <Run Text=":" />
+                                <Run Text="{Binding VideoPort}" />
+                            </TextBlock>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource PortBadgeStyle}">
+                            <TextBlock FontSize="12" Foreground="#FFFBCFE8">
+                                <Run Text="DATA " />
+                                <Run Text="{Binding DataIp}" />
+                                <Run Text=":" />
+                                <Run Text="{Binding DataPort}" />
+                            </TextBlock>
+                        </Border>
+                    </Grid>
+
+                    <Border x:Name="IrVideoSurface"
+                            Grid.Row="1"
+                            MinHeight="360"
+                            Background="#FF020617"
+                            BorderBrush="#FF334155"
+                            BorderThickness="1"
+                            CornerRadius="5">
+                        <Grid>
+                            <Grid x:Name="IrRtspHost" />
+                            <StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock HorizontalAlignment="Center"
+                                           FontSize="22"
+                                           FontWeight="SemiBold"
+                                           Foreground="#FFCBD5E1"
+                                           Text="IR RTSP VIDEO" />
+                                <TextBlock HorizontalAlignment="Center"
+                                           Margin="0,8,0,0"
+                                           Foreground="#FF64748B"
+                                           Text="RTSP 디코더 연결 대기" />
+                            </StackPanel>
+                            <Canvas x:Name="IrDataOverlay"
+                                    Panel.ZIndex="10"
+                                    IsHitTestVisible="False" />
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2" Margin="2,10,2,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontSize="11"
+                                       Foreground="#FF64748B"
+                                       Text="VIDEO STATUS" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Foreground="#FFCBD5E1"
+                                       Text="{Binding VideoStatus}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock FontSize="11"
+                                       Foreground="#FF64748B"
+                                       Text="ADDITIONAL DATA" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Foreground="#FFCBD5E1"
+                                       Text="{Binding DataStatus}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
             </Border>
         </Grid>
 
-        <GroupBox Grid.Row="1" Header="UDP 설정" Margin="0,0,0,12">
-            <Grid Margin="12">
+        <Border Grid.Row="2"
+                Margin="4,14,4,0"
+                Padding="12,8"
+                Background="#FF172033"
+                CornerRadius="5">
+            <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="110" />
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="110" />
-                    <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="수신 포트" />
-                <TextBox Grid.Column="1"
-                         Margin="8,0,0,0"
-                         Padding="6,4"
-                         IsEnabled="{Binding IsNotListening}"
-                         Text="{Binding LocalPort, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="송신 주소" />
-                <TextBox Grid.Column="4"
-                         Margin="8,0,0,0"
-                         Padding="6,4"
-                         Text="{Binding RemoteHost, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Grid.Column="6" VerticalAlignment="Center" Text="송신 포트" />
-                <TextBox Grid.Column="7"
-                         Margin="8,0,0,0"
-                         Padding="6,4"
-                         Text="{Binding RemotePort, UpdateSourceTrigger=PropertyChanged}" />
-
-                <Button Grid.Column="9"
-                        MinWidth="72"
-                        Padding="10,5"
-                        Command="{Binding StartCommand}"
-                        Content="열기" />
-                <Button Grid.Column="10"
-                        MinWidth="72"
-                        Margin="8,0,0,0"
-                        Padding="10,5"
-                        Command="{Binding StopCommand}"
-                        Content="닫기" />
+                <Ellipse Width="9"
+                         Height="9"
+                         Margin="0,0,9,0">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="#FF64748B" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsServerRunning}" Value="True">
+                                    <Setter Property="Fill" Value="#FF22C55E" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Foreground="#FFCBD5E1"
+                           Text="{Binding StatusMessage}" />
             </Grid>
-        </GroupBox>
-
-        <GroupBox Grid.Row="2" Header="송신" Margin="0,0,0,12">
-            <Grid Margin="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <TextBox Padding="8,5"
-                         Text="{Binding OutgoingMessage, UpdateSourceTrigger=PropertyChanged}" />
-                <Button Grid.Column="1"
-                        MinWidth="80"
-                        Margin="8,0,0,0"
-                        Padding="12,5"
-                        Command="{Binding SendCommand}"
-                        Content="보내기" />
-            </Grid>
-        </GroupBox>
-
-        <GroupBox Grid.Row="3" Header="송수신 로그">
-            <Grid Margin="12">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <DataGrid AutoGenerateColumns="False"
-                          CanUserAddRows="False"
-                          IsReadOnly="True"
-                          ItemsSource="{Binding LogEntries}">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Width="100" Binding="{Binding Timestamp, StringFormat=HH:mm:ss.fff}" Header="시간" />
-                        <DataGridTextColumn Width="60" Binding="{Binding Direction}" Header="구분" />
-                        <DataGridTextColumn Width="170" Binding="{Binding EndPoint}" Header="Endpoint" />
-                        <DataGridTextColumn Width="*" Binding="{Binding Message}" Header="내용" />
-                    </DataGrid.Columns>
-                </DataGrid>
-
-                <Button Grid.Row="1"
-                        HorizontalAlignment="Right"
-                        Margin="0,8,0,0"
-                        Padding="12,5"
-                        Command="{Binding ClearLogCommand}"
-                        Content="로그 지우기" />
-            </Grid>
-        </GroupBox>
+        </Border>
     </Grid>
 </Window>

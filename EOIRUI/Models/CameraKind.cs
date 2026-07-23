@@ -1,6 +1,6 @@
 namespace EOIRUI.Models;
 
-public enum CameraDataChannel
+public enum CameraKind
 {
     Eo,
     Ir

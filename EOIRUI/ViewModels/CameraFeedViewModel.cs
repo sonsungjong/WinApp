@@ -1,3 +1,5 @@
+using LibVLCSharp.Shared;
+
 namespace EOIRUI.ViewModels;
 
 public sealed class CameraFeedViewModel : ViewModelBase
@@ -11,12 +13,14 @@ public sealed class CameraFeedViewModel : ViewModelBase
 
     public CameraFeedViewModel(
         string name,
+        MediaPlayer mediaPlayer,
         string videoIp,
         int videoPort,
         string dataIp,
         int dataPort)
     {
         Name = name;
+        MediaPlayer = mediaPlayer;
         VideoIp = videoIp;
         VideoPort = videoPort;
         DataIp = dataIp;
@@ -24,6 +28,8 @@ public sealed class CameraFeedViewModel : ViewModelBase
     }
 
     public string Name { get; }
+
+    public MediaPlayer MediaPlayer { get; }
 
     public string VideoIp { get; }
 
@@ -84,6 +90,8 @@ public sealed class CameraFeedViewModel : ViewModelBase
     }
 
     public void SetVideoFault(string message) => VideoStatus = message;
+
+    public void SetVideoStatus(string message) => VideoStatus = message;
 
     public void SetDataFault(string message) => DataStatus = message;
 }

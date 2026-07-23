@@ -6,18 +6,18 @@ namespace EOIRUI.Services;
 public sealed class CameraDataPacketEventArgs : EventArgs
 {
     public CameraDataPacketEventArgs(
-        CameraDataChannel channel,
+        CameraKind camera,
         int localPort,
         byte[] data,
         IPEndPoint remoteEndPoint)
     {
-        Channel = channel;
+        Camera = camera;
         LocalPort = localPort;
         Data = data;
         RemoteEndPoint = remoteEndPoint;
     }
 
-    public CameraDataChannel Channel { get; }
+    public CameraKind Camera { get; }
 
     public int LocalPort { get; }
 
@@ -29,16 +29,16 @@ public sealed class CameraDataPacketEventArgs : EventArgs
 public sealed class CameraDataListenerFaultedEventArgs : EventArgs
 {
     public CameraDataListenerFaultedEventArgs(
-        CameraDataChannel channel,
+        CameraKind camera,
         int localPort,
         Exception exception)
     {
-        Channel = channel;
+        Camera = camera;
         LocalPort = localPort;
         Exception = exception;
     }
 
-    public CameraDataChannel Channel { get; }
+    public CameraKind Camera { get; }
 
     public int LocalPort { get; }
 

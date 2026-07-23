@@ -1,6 +1,7 @@
 ﻿using System.Configuration;
 using System.Data;
 using System.Windows;
+using System.Windows.Threading;
 using EOIRUI.Services;
 using EOIRUI.Views;
 using EOIRUI.ViewModels;
@@ -34,7 +35,8 @@ namespace EOIRUI
             }
 
             var cameraDataUdpServer = new CameraDataUdpServer(config);
-            _mainViewModel = new MainViewModel(cameraDataUdpServer, config);
+            var rtspVideoService = new RtspVideoService(config);
+            _mainViewModel = new MainViewModel(cameraDataUdpServer, rtspVideoService, config);
 
             MainWindow = new MainView
             {
@@ -42,6 +44,7 @@ namespace EOIRUI
             };
             MainWindow.Show();
 
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Loaded);
             await _mainViewModel.InitializeAsync();
         }
 

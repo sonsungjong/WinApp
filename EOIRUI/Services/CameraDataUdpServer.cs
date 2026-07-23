@@ -14,8 +14,8 @@ public sealed class CameraDataUdpServer : ICameraDataUdpServer
 
         _listeners =
         [
-            CreateListener(CameraDataChannel.Eo, config.EoDataPort),
-            CreateListener(CameraDataChannel.Ir, config.IrDataPort)
+            CreateListener(CameraKind.Eo, config.EoDataPort),
+            CreateListener(CameraKind.Ir, config.IrDataPort)
         ];
     }
 
@@ -92,7 +92,7 @@ public sealed class CameraDataUdpServer : ICameraDataUdpServer
         _lifecycleLock.Dispose();
     }
 
-    private ListenerRegistration CreateListener(CameraDataChannel channel, int port)
+    private ListenerRegistration CreateListener(CameraKind camera, int port)
     {
         var service = new UdpService();
 
@@ -100,7 +100,7 @@ public sealed class CameraDataUdpServer : ICameraDataUdpServer
             PacketReceived?.Invoke(
                 this,
                 new CameraDataPacketEventArgs(
-                    channel,
+                    camera,
                     port,
                     eventArgs.Data,
                     eventArgs.RemoteEndPoint));
@@ -108,7 +108,7 @@ public sealed class CameraDataUdpServer : ICameraDataUdpServer
         service.ReceiveFaulted += (_, exception) =>
             ListenerFaulted?.Invoke(
                 this,
-                new CameraDataListenerFaultedEventArgs(channel, port, exception));
+                new CameraDataListenerFaultedEventArgs(camera, port, exception));
 
         return new ListenerRegistration(port, service);
     }

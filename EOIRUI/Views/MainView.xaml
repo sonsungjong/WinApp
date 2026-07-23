@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
         mc:Ignorable="d"
         Title="EO/IR Monitoring Server"
         Height="720"
@@ -56,12 +57,12 @@
             <Button Grid.Column="1"
                     Margin="0,3,8,3"
                     Command="{Binding StartServerCommand}"
-                    Content="서버 시작" />
+                    Content="수신 시작" />
             <Button Grid.Column="2"
                     Margin="0,3,0,3"
                     Background="#FF475569"
                     Command="{Binding StopServerCommand}"
-                    Content="서버 중지" />
+                    Content="수신 중지" />
         </Grid>
 
         <Grid Grid.Row="1">
@@ -119,24 +120,11 @@
                             BorderBrush="#FF334155"
                             BorderThickness="1"
                             CornerRadius="5">
-                        <Grid>
-                            <Grid x:Name="EoRtspHost" />
-                            <StackPanel HorizontalAlignment="Center"
-                                        VerticalAlignment="Center">
-                                <TextBlock HorizontalAlignment="Center"
-                                           FontSize="22"
-                                           FontWeight="SemiBold"
-                                           Foreground="#FFCBD5E1"
-                                           Text="EO RTSP VIDEO" />
-                                <TextBlock HorizontalAlignment="Center"
-                                           Margin="0,8,0,0"
-                                           Foreground="#FF64748B"
-                                           Text="RTSP 디코더 연결 대기" />
-                            </StackPanel>
+                        <vlc:VideoView x:Name="EoRtspHost"
+                                       MediaPlayer="{Binding MediaPlayer}">
                             <Canvas x:Name="EoDataOverlay"
-                                    Panel.ZIndex="10"
                                     IsHitTestVisible="False" />
-                        </Grid>
+                        </vlc:VideoView>
                     </Border>
 
                     <Grid Grid.Row="2" Margin="2,10,2,0">
@@ -212,24 +200,11 @@
                             BorderBrush="#FF334155"
                             BorderThickness="1"
                             CornerRadius="5">
-                        <Grid>
-                            <Grid x:Name="IrRtspHost" />
-                            <StackPanel HorizontalAlignment="Center"
-                                        VerticalAlignment="Center">
-                                <TextBlock HorizontalAlignment="Center"
-                                           FontSize="22"
-                                           FontWeight="SemiBold"
-                                           Foreground="#FFCBD5E1"
-                                           Text="IR RTSP VIDEO" />
-                                <TextBlock HorizontalAlignment="Center"
-                                           Margin="0,8,0,0"
-                                           Foreground="#FF64748B"
-                                           Text="RTSP 디코더 연결 대기" />
-                            </StackPanel>
+                        <vlc:VideoView x:Name="IrRtspHost"
+                                       MediaPlayer="{Binding MediaPlayer}">
                             <Canvas x:Name="IrDataOverlay"
-                                    Panel.ZIndex="10"
                                     IsHitTestVisible="False" />
-                        </Grid>
+                        </vlc:VideoView>
                     </Border>
 
                     <Grid Grid.Row="2" Margin="2,10,2,0">

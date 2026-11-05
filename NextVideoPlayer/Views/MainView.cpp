@@ -12,6 +12,7 @@ namespace
     constexpr int kDefaultHeight = 760;
     constexpr int kControlBarHeight = 76;
 
+    constexpr wchar_t kControlBarClassName[] = L"NextVideoPlayer_ControlBarWnd";
     constexpr wchar_t kSettingsClassName[] = L"NextVideoPlayer_SettingsWnd";
     constexpr wchar_t kPlaylistClassName[] = L"NextVideoPlayer_PlaylistWnd";
 
@@ -27,6 +28,57 @@ namespace
     constexpr int IDC_PL_ADD = 2003;
     constexpr int IDC_PL_REMOVE = 2004;
     constexpr int IDC_PL_CLEAR = 2005;
+
+    std::vector<std::wstring> GetBundledFontPaths()
+    {
+        WCHAR modulePath[MAX_PATH]{};
+        GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+        std::filesystem::path exeDir = std::filesystem::path(modulePath).parent_path();
+
+        std::vector<std::filesystem::path> baseDirs = {
+            exeDir / L"ThirdParty" / L"fonts",
+            exeDir.parent_path() / L"ThirdParty" / L"fonts"
+        };
+
+        WCHAR localAppData[MAX_PATH]{};
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) > 0)
+        {
+            baseDirs.push_back(std::filesystem::path(localAppData) / L"Microsoft" / L"Windows" / L"Fonts");
+        }
+
+        std::vector<std::wstring> found;
+        for (const wchar_t* fileName : { L"NanumSquareR.ttf", L"NanumSquareB.ttf" })
+        {
+            for (const auto& dir : baseDirs)
+            {
+                std::filesystem::path candidate = dir / fileName;
+                std::error_code ec;
+                if (std::filesystem::exists(candidate, ec))
+                {
+                    found.push_back(candidate.wstring());
+                    break;
+                }
+            }
+        }
+        return found;
+    }
+
+    HFONT GetNanumDialogFont()
+    {
+        static HFONT s_hFont = nullptr;
+        if (!s_hFont)
+        {
+            s_hFont = CreateFontW(
+                -13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"NanumSquare");
+            if (!s_hFont)
+            {
+                s_hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+            }
+        }
+        return s_hFont;
+    }
 
     struct SettingsDialogContext
     {
@@ -53,7 +105,7 @@ namespace
         }
         case WM_CREATE:
         {
-            HFONT hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+            HFONT hFont = GetNanumDialogFont();
 
             HWND hLblSeek = CreateWindowExW(0, L"STATIC", L"좌/우 방향키 이동 시간 (초):",
                 WS_CHILD | WS_VISIBLE, 20, 22, 180, 20, hWnd, nullptr, nullptr, nullptr);
@@ -177,17 +229,19 @@ bool MainView::Initialize(HINSTANCE hInstance)
 
     RECT clientRect{};
     GetClientRect(m_hWnd, &clientRect);
-    int videoHeight = std::max(0L, clientRect.bottom - clientRect.top - kControlBarHeight);
+    int clientW = clientRect.right - clientRect.left;
+    int clientH = clientRect.bottom - clientRect.top;
+    int videoH = std::max(0, clientH - kControlBarHeight);
 
     m_videoHwnd = CreateWindowExW(
         0,
         L"STATIC",
         nullptr,
-        WS_CHILD | WS_CLIPSIBLINGS,
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
         0,
         0,
-        clientRect.right - clientRect.left,
-        videoHeight,
+        clientW,
+        videoH,
         m_hWnd,
         nullptr,
         hInstance,
@@ -199,6 +253,29 @@ bool MainView::Initialize(HINSTANCE hInstance)
     }
 
     EnableWindow(m_videoHwnd, FALSE);
+
+    m_controlBarHwnd = CreateWindowExW(
+        0,
+        kControlBarClassName,
+        nullptr,
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        0,
+        videoH,
+        clientW,
+        kControlBarHeight,
+        m_hWnd,
+        nullptr,
+        hInstance,
+        this);
+
+    if (!m_controlBarHwnd)
+    {
+        return false;
+    }
+
+    SetWindowPos(m_controlBarHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(m_videoHwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
     return true;
 }
 
@@ -262,7 +339,10 @@ void MainView::UpdateControlBar(const ControlBarState& state)
         CheckMenuItem(m_hMenu, IDM_VIEW_TOPMOST, MF_BYCOMMAND | (state.topMost ? MF_CHECKED : MF_UNCHECKED));
     }
 
-    Render();
+    if (m_controlBarHwnd && IsWindow(m_controlBarHwnd))
+    {
+        InvalidateRect(m_controlBarHwnd, nullptr, FALSE);
+    }
 }
 
 void MainView::UpdatePlaylistView(const std::vector<std::wstring>& items, int currentIndex)
@@ -318,24 +398,45 @@ void MainView::ToggleFullscreen()
         m_savedExStyle = GetWindowLongPtrW(m_hWnd, GWL_EXSTYLE);
         GetWindowPlacement(m_hWnd, &m_savedPlacement);
 
-        SetMenu(m_hWnd, nullptr);
-        SetWindowLongPtrW(m_hWnd, GWL_STYLE, (m_savedStyle & ~WS_OVERLAPPEDWINDOW) | WS_POPUP | WS_CLIPCHILDREN);
-
         HMONITOR hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
         MONITORINFO mi{ sizeof(MONITORINFO) };
         GetMonitorInfoW(hMonitor, &mi);
 
+        int screenW = mi.rcMonitor.right - mi.rcMonitor.left;
+        int screenH = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
         m_isFullscreen = true;
+        m_isControlBarVisible = false;
         m_lastMouseActiveTick = GetTickCount64();
+        GetCursorPos(&m_lastMousePt);
+
+        if (m_controlBarHwnd)
+        {
+            ShowWindow(m_controlBarHwnd, SW_HIDE);
+        }
+
+        SetMenu(m_hWnd, nullptr);
+        SetWindowLongPtrW(
+            m_hWnd,
+            GWL_STYLE,
+            (m_savedStyle & ~(WS_OVERLAPPEDWINDOW | WS_MAXIMIZE | WS_MINIMIZE)) | WS_POPUP | WS_CLIPCHILDREN | WS_VISIBLE);
+        SetWindowLongPtrW(
+            m_hWnd,
+            GWL_EXSTYLE,
+            m_savedExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
 
         SetWindowPos(
             m_hWnd,
-            HWND_TOP,
+            m_barState.topMost ? HWND_TOPMOST : HWND_TOP,
             mi.rcMonitor.left,
             mi.rcMonitor.top,
-            mi.rcMonitor.right - mi.rcMonitor.left,
-            mi.rcMonitor.bottom - mi.rcMonitor.top,
-            SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+            screenW,
+            screenH,
+            SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+        UpdateLayout();
+        SetForegroundWindow(m_hWnd);
+        SetFocus(m_hWnd);
     }
     else
     {
@@ -357,9 +458,20 @@ void MainView::ExitFullscreen()
     SetWindowLongPtrW(m_hWnd, GWL_STYLE, m_savedStyle);
     SetWindowLongPtrW(m_hWnd, GWL_EXSTYLE, m_savedExStyle);
     SetWindowPlacement(m_hWnd, &m_savedPlacement);
-    SetWindowPos(m_hWnd, nullptr, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    SetWindowPos(
+        m_hWnd,
+        m_barState.topMost ? HWND_TOPMOST : HWND_NOTOPMOST,
+        0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
     UpdateLayout();
+
+    if (m_controlBarHwnd)
+    {
+        ShowWindow(m_controlBarHwnd, SW_SHOW);
+        InvalidateRect(m_controlBarHwnd, nullptr, FALSE);
+    }
+
     Render();
 }
 
@@ -370,17 +482,8 @@ bool MainView::IsFullscreen() const
 
 void MainView::UpdateFullscreenAutoHide()
 {
-    if (!m_hWnd)
+    if (!m_hWnd || !m_isFullscreen || !m_controlBarHwnd)
     {
-        return;
-    }
-
-    if (!m_isFullscreen)
-    {
-        if (!m_isControlBarVisible)
-        {
-            SetControlBarVisible(true);
-        }
         return;
     }
 
@@ -390,30 +493,48 @@ void MainView::UpdateFullscreenAutoHide()
         return;
     }
 
-    ScreenToClient(m_hWnd, &cursorPt);
+    HMONITOR hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{ sizeof(MONITORINFO) };
+    GetMonitorInfoW(hMonitor, &mi);
 
-    RECT clientRect{};
-    GetClientRect(m_hWnd, &clientRect);
-    int clientHeight = clientRect.bottom - clientRect.top;
+    bool inMonitor = (cursorPt.x >= mi.rcMonitor.left && cursorPt.x < mi.rcMonitor.right &&
+                      cursorPt.y >= mi.rcMonitor.top && cursorPt.y < mi.rcMonitor.bottom);
+    bool inToolbarZone = inMonitor && (cursorPt.y >= mi.rcMonitor.bottom - kControlBarHeight);
 
-    bool nearBottom = (cursorPt.y >= clientHeight - kControlBarHeight - 24);
-    bool moved = (cursorPt.x != m_lastMousePt.x || cursorPt.y != m_lastMousePt.y);
-    m_lastMousePt = cursorPt;
-
-    if (nearBottom || moved || m_isDraggingSeek || m_isDraggingVolume)
+    if (inToolbarZone || m_isDraggingSeek || m_isDraggingVolume)
     {
         m_lastMouseActiveTick = GetTickCount64();
-        if (nearBottom && !m_isControlBarVisible)
+
+        if (!m_isControlBarVisible)
         {
-            SetControlBarVisible(true);
+            m_isControlBarVisible = true;
+            RECT rc{};
+            GetClientRect(m_hWnd, &rc);
+            int w = rc.right - rc.left;
+            int h = rc.bottom - rc.top;
+
+            SetWindowPos(
+                m_controlBarHwnd,
+                HWND_TOP,
+                0,
+                h - kControlBarHeight,
+                w,
+                kControlBarHeight,
+                SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            InvalidateRect(m_controlBarHwnd, nullptr, FALSE);
         }
     }
-
-    if (!nearBottom && !m_isDraggingSeek && !m_isDraggingVolume)
+    else
     {
-        if (GetTickCount64() - m_lastMouseActiveTick > 2000 && m_isControlBarVisible)
+        if (m_isControlBarVisible && (GetTickCount64() - m_lastMouseActiveTick >= 500))
         {
-            SetControlBarVisible(false);
+            m_isControlBarVisible = false;
+            ShowWindow(m_controlBarHwnd, SW_HIDE);
+            if (m_videoHwnd)
+            {
+                InvalidateRect(m_videoHwnd, nullptr, FALSE);
+            }
+            InvalidateRect(m_hWnd, nullptr, FALSE);
         }
     }
 }
@@ -581,27 +702,21 @@ void MainView::Render()
     m_renderTarget->BeginDraw();
 
     D2D1_SIZE_F size = m_renderTarget->GetSize();
-    float videoAreaBottom = m_isControlBarVisible ? std::max(0.0f, size.height - static_cast<float>(kControlBarHeight)) : size.height;
 
     if (!m_isVideoVisible)
     {
-        D2D1_RECT_F videoRect = D2D1::RectF(0.0f, 0.0f, size.width, videoAreaBottom);
-        m_renderTarget->FillRectangle(videoRect, m_barBgBrush.Get());
+        D2D1_RECT_F videoRect = D2D1::RectF(0.0f, 0.0f, size.width, size.height);
+        m_renderTarget->FillRectangle(videoRect, m_mainBgBrush.Get());
 
-        if (!m_statusText.empty() && m_textFormat && m_textBrush)
+        if (!m_statusText.empty() && m_textFormat && m_mainTextBrush)
         {
             m_renderTarget->DrawTextW(
                 m_statusText.c_str(),
                 static_cast<UINT32>(m_statusText.length()),
                 m_textFormat.Get(),
                 videoRect,
-                m_textBrush.Get());
+                m_mainTextBrush.Get());
         }
-    }
-
-    if (m_isControlBarVisible)
-    {
-        DrawControlBar(size);
     }
 
     HRESULT hr = m_renderTarget->EndDraw();
@@ -611,18 +726,65 @@ void MainView::Render()
     }
 }
 
-void MainView::DrawControlBar(const D2D1_SIZE_F& rtSize)
+void MainView::DrawControlBar()
 {
-    float barTop = std::max(0.0f, rtSize.height - static_cast<float>(kControlBarHeight));
-    D2D1_RECT_F barRect = D2D1::RectF(0.0f, barTop, rtSize.width, rtSize.height);
-    m_barBgBrush->SetColor(D2D1::ColorF(0.10f, 0.10f, 0.12f));
-    m_renderTarget->FillRectangle(barRect, m_barBgBrush.Get());
+    if (!m_controlBarHwnd || !IsWindow(m_controlBarHwnd))
+    {
+        return;
+    }
 
-    m_seekBarRect = D2D1::RectF(14.0f, barTop + 10.0f, std::max(30.0f, rtSize.width - 14.0f), barTop + 22.0f);
-    D2D1_RECT_F trackLine = D2D1::RectF(m_seekBarRect.left, barTop + 14.0f, m_seekBarRect.right, barTop + 18.0f);
-    m_renderTarget->FillRectangle(trackLine, m_trackBrush.Get());
+    if (FAILED(CreateControlBarResources()))
+    {
+        return;
+    }
+
+    m_barRenderTarget->BeginDraw();
+
+    D2D1_SIZE_F rtSize = m_barRenderTarget->GetSize();
+    D2D1_RECT_F barRect = D2D1::RectF(0.0f, 0.0f, rtSize.width, rtSize.height);
+
+    // 1. Sleek Dark/Flat Control Bar Background (subtle vertical gradient around 0x1E1E1E)
+    if (m_barGradientBrush)
+    {
+        m_barGradientBrush->SetStartPoint(D2D1::Point2F(0.0f, 0.0f));
+        m_barGradientBrush->SetEndPoint(D2D1::Point2F(0.0f, rtSize.height));
+        m_barRenderTarget->FillRectangle(barRect, m_barGradientBrush.Get());
+    }
+    else
+    {
+        m_barBgBrush->SetColor(D2D1::ColorF(0x1E1E1E));
+        m_barRenderTarget->FillRectangle(barRect, m_barBgBrush.Get());
+    }
+
+    // Subtle 1px top border separator
+    m_barRenderTarget->FillRectangle(D2D1::RectF(0.0f, 0.0f, rtSize.width, 1.0f), m_btnBorderBrush.Get());
+
+    // 2. Thin, Sleek Seek Bar with Hover/Drag Highlight
+    m_seekBarRect = D2D1::RectF(16.0f, 4.0f, std::max(32.0f, rtSize.width - 16.0f), 24.0f);
+    bool hoverSeek = m_isDraggingSeek ||
+        (m_isTrackingBarMouse && PtInRectF(m_seekBarRect, m_hoverMousePt.x, m_hoverMousePt.y));
+
+    float trackCenterY = 14.0f;
+    float trackHalfH = hoverSeek ? 3.0f : 1.5f;
+    D2D1_ROUNDED_RECT trackRounded = D2D1::RoundedRect(
+        D2D1::RectF(m_seekBarRect.left, trackCenterY - trackHalfH, m_seekBarRect.right, trackCenterY + trackHalfH),
+        trackHalfH,
+        trackHalfH);
+    m_barRenderTarget->FillRoundedRectangle(trackRounded, m_trackBrush.Get());
 
     float seekWidth = m_seekBarRect.right - m_seekBarRect.left;
+
+    // Hover preview bar along seek track
+    if (hoverSeek && m_hoverMousePt.x >= m_seekBarRect.left)
+    {
+        float previewX = std::clamp(m_hoverMousePt.x, m_seekBarRect.left, m_seekBarRect.right);
+        D2D1_ROUNDED_RECT previewRounded = D2D1::RoundedRect(
+            D2D1::RectF(m_seekBarRect.left, trackCenterY - trackHalfH, previewX, trackCenterY + trackHalfH),
+            trackHalfH,
+            trackHalfH);
+        m_barRenderTarget->FillRoundedRectangle(previewRounded, m_trackHoverBrush.Get());
+    }
+
     float progressRatio = 0.0f;
     if (m_barState.duration > 0.0)
     {
@@ -630,117 +792,190 @@ void MainView::DrawControlBar(const D2D1_SIZE_F& rtSize)
     }
 
     float filledX = m_seekBarRect.left + seekWidth * progressRatio;
-    D2D1_RECT_F filledLine = D2D1::RectF(m_seekBarRect.left, barTop + 14.0f, filledX, barTop + 18.0f);
-    m_renderTarget->FillRectangle(filledLine, m_accentBrush.Get());
+    if (filledX > m_seekBarRect.left)
+    {
+        D2D1_ROUNDED_RECT filledRounded = D2D1::RoundedRect(
+            D2D1::RectF(m_seekBarRect.left, trackCenterY - trackHalfH, filledX, trackCenterY + trackHalfH),
+            trackHalfH,
+            trackHalfH);
+        m_barRenderTarget->FillRoundedRectangle(
+            filledRounded,
+            hoverSeek ? m_accentHoverBrush.Get() : m_accentBrush.Get());
+    }
 
+    // A-B markers
     if (m_barState.duration > 0.0)
     {
         if (m_barState.abLoopA >= 0.0)
         {
             float ax = m_seekBarRect.left + seekWidth * static_cast<float>(std::clamp(m_barState.abLoopA / m_barState.duration, 0.0, 1.0));
-            m_renderTarget->FillRectangle(D2D1::RectF(ax - 1.5f, barTop + 8.0f, ax + 1.5f, barTop + 24.0f), m_abMarkerBrush.Get());
+            m_barRenderTarget->FillRectangle(D2D1::RectF(ax - 1.5f, 7.0f, ax + 1.5f, 21.0f), m_abMarkerBrush.Get());
         }
         if (m_barState.abLoopB >= 0.0)
         {
             float bx = m_seekBarRect.left + seekWidth * static_cast<float>(std::clamp(m_barState.abLoopB / m_barState.duration, 0.0, 1.0));
-            m_renderTarget->FillRectangle(D2D1::RectF(bx - 1.5f, barTop + 8.0f, bx + 1.5f, barTop + 24.0f), m_abMarkerBrush.Get());
+            m_barRenderTarget->FillRectangle(D2D1::RectF(bx - 1.5f, 7.0f, bx + 1.5f, 21.0f), m_abMarkerBrush.Get());
         }
     }
 
-    D2D1_ELLIPSE thumb = D2D1::Ellipse(D2D1::Point2F(filledX, barTop + 16.0f), 6.0f, 6.0f);
-    m_renderTarget->FillEllipse(thumb, m_textBrush.Get());
+    // Seek thumb with hover highlight ring
+    if (hoverSeek)
+    {
+        m_accentHoverBrush->SetOpacity(0.28f);
+        m_barRenderTarget->FillEllipse(D2D1::Ellipse(D2D1::Point2F(filledX, trackCenterY), 9.5f, 9.5f), m_accentHoverBrush.Get());
+        m_accentHoverBrush->SetOpacity(1.0f);
+    }
+    float thumbRadius = hoverSeek ? 6.0f : 4.2f;
+    m_barRenderTarget->FillEllipse(D2D1::Ellipse(D2D1::Point2F(filledX, trackCenterY), thumbRadius, thumbRadius), m_barTextBrush.Get());
 
-    float rowTop = barTop + 34.0f;
-    float rowBottom = barTop + 66.0f;
+    // 3. Transport & Control Row (Windows 10/11 Fluent/MDL2 Vector Icons + Segoe UI Timer + NanumSquare Korean UI)
+    float rowTop = 30.0f;
+    float rowBottom = 64.0f;
     float curX = 14.0f;
 
-    m_btnPlayPause = D2D1::RectF(curX, rowTop, curX + 54.0f, rowBottom);
-    DrawButton(m_btnPlayPause, m_barState.playbackState == PlaybackState::Playing ? L"일시정지" : L"재생",
-        m_barState.playbackState == PlaybackState::Playing);
-    curX += 60.0f;
+    // Play / Pause: \uE768 (▶), \uE769 (⏸)
+    bool isPlaying = (m_barState.playbackState == PlaybackState::Playing);
+    m_btnPlayPause = D2D1::RectF(curX, rowTop, curX + 38.0f, rowBottom);
+    DrawButton(m_btnPlayPause, isPlaying ? L"\uE769" : L"\uE768", m_iconTextFormat.Get(), isPlaying);
+    curX += 44.0f;
 
-    m_btnStop = D2D1::RectF(curX, rowTop, curX + 44.0f, rowBottom);
-    DrawButton(m_btnStop, L"정지", false);
-    curX += 50.0f;
+    // Stop: \uE71A (⏹)
+    m_btnStop = D2D1::RectF(curX, rowTop, curX + 36.0f, rowBottom);
+    DrawButton(m_btnStop, L"\uE71A", m_iconTextFormat.Get(), false);
+    curX += 42.0f;
 
-    m_btnPrev = D2D1::RectF(curX, rowTop, curX + 40.0f, rowBottom);
-    DrawButton(m_btnPrev, L"이전", false);
+    // Prev: \uE892 (⏮)
+    m_btnPrev = D2D1::RectF(curX, rowTop, curX + 36.0f, rowBottom);
+    DrawButton(m_btnPrev, L"\uE892", m_iconTextFormat.Get(), false);
+    curX += 42.0f;
+
+    // Next: \uE893 (⏭)
+    m_btnNext = D2D1::RectF(curX, rowTop, curX + 36.0f, rowBottom);
+    DrawButton(m_btnNext, L"\uE893", m_iconTextFormat.Get(), false);
     curX += 46.0f;
 
-    m_btnNext = D2D1::RectF(curX, rowTop, curX + 40.0f, rowBottom);
-    DrawButton(m_btnNext, L"다음", false);
-    curX += 50.0f;
-
-    std::wstring timeStr = FormatTime(m_barState.position) + L" / " + FormatTime(m_barState.duration);
+    // Timer in Segoe UI: 00:00:00 / 00:00:00
+    std::wstring posStr = FormatTime(m_barState.position);
+    std::wstring durStr = L" / " + FormatTime(m_barState.duration);
     if (m_barState.abLoopA >= 0.0 || m_barState.abLoopB >= 0.0)
     {
-        timeStr += L" [A-B]";
+        durStr += L"  [A-B]";
     }
+    std::wstring fullTimeStr = posStr + durStr;
 
-    D2D1_RECT_F timeRect = D2D1::RectF(curX, rowTop, curX + 210.0f, rowBottom);
-    m_renderTarget->DrawTextW(
-        timeStr.c_str(),
-        static_cast<UINT32>(timeStr.length()),
-        m_uiTextFormat.Get(),
+    D2D1_RECT_F timeRect = D2D1::RectF(curX, rowTop, curX + 220.0f, rowBottom);
+    m_barRenderTarget->DrawTextW(
+        fullTimeStr.c_str(),
+        static_cast<UINT32>(fullTimeStr.length()),
+        m_timerTextFormat.Get(),
         timeRect,
-        m_textBrush.Get());
+        m_barTextBrush.Get());
 
+    // Right-side controls (laid out right-to-left)
     float rightX = rtSize.width - 14.0f;
 
-    m_btnSettings = D2D1::RectF(rightX - 48.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnSettings, L"설정", false);
+    // Settings: \uE713 (⚙)
+    m_btnSettings = D2D1::RectF(rightX - 36.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnSettings, L"\uE713", m_iconTextFormat.Get(), false);
+    rightX -= 42.0f;
+
+    // Playlist: \uE90B (📑)
+    bool playlistOpen = (m_playlistHwnd && IsWindowVisible(m_playlistHwnd));
+    m_btnPlaylist = D2D1::RectF(rightX - 36.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnPlaylist, L"\uE90B", m_iconTextFormat.Get(), playlistOpen);
+    rightX -= 42.0f;
+
+    // Subtitle Toggle (Korean UI text in NanumSquare)
+    m_btnSub = D2D1::RectF(rightX - 48.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnSub, L"자막", m_uiTextFormat.Get(), m_barState.subtitleVisible);
     rightX -= 54.0f;
 
-    m_btnPlaylist = D2D1::RectF(rightX - 48.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnPlaylist, L"목록", m_playlistHwnd && IsWindowVisible(m_playlistHwnd));
-    rightX -= 54.0f;
+    // Repeat: \uE8EE (🔁) - Default OFF
+    m_btnRepeat = D2D1::RectF(rightX - 36.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnRepeat, L"\uE8EE", m_iconTextFormat.Get(), m_barState.repeatEnabled);
+    rightX -= 46.0f;
 
-    m_btnSub = D2D1::RectF(rightX - 66.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnSub, m_barState.subtitleVisible ? L"자막 ON" : L"자막 OFF", m_barState.subtitleVisible);
-    rightX -= 72.0f;
-
-    m_btnRepeat = D2D1::RectF(rightX - 68.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnRepeat, m_barState.repeatEnabled ? L"반복 ON" : L"반복 OFF", m_barState.repeatEnabled);
-    rightX -= 76.0f;
-
-    m_btnSpeedPlus = D2D1::RectF(rightX - 28.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnSpeedPlus, L"+", false);
+    // Speed controls (+, 1.0x, -) in Segoe UI
+    m_btnSpeedPlus = D2D1::RectF(rightX - 28.0f, rowTop + 2.0f, rightX, rowBottom - 2.0f);
+    DrawButton(m_btnSpeedPlus, L"+", m_speedTextFormat.Get(), false);
     rightX -= 32.0f;
 
     WCHAR speedBuf[32]{};
     swprintf_s(speedBuf, L"%.1fx", m_barState.speed);
-    m_btnSpeedReset = D2D1::RectF(rightX - 48.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnSpeedReset, speedBuf, std::abs(m_barState.speed - 1.0) > 0.04);
-    rightX -= 52.0f;
+    m_btnSpeedReset = D2D1::RectF(rightX - 46.0f, rowTop + 2.0f, rightX, rowBottom - 2.0f);
+    DrawButton(m_btnSpeedReset, speedBuf, m_speedTextFormat.Get(), std::abs(m_barState.speed - 1.0) > 0.04);
+    rightX -= 50.0f;
 
-    m_btnSpeedMinus = D2D1::RectF(rightX - 28.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnSpeedMinus, L"-", false);
-    rightX -= 38.0f;
+    m_btnSpeedMinus = D2D1::RectF(rightX - 28.0f, rowTop + 2.0f, rightX, rowBottom - 2.0f);
+    DrawButton(m_btnSpeedMinus, L"-", m_speedTextFormat.Get(), false);
+    rightX -= 42.0f;
 
-    m_volSliderRect = D2D1::RectF(rightX - 80.0f, rowTop + 10.0f, rightX, rowBottom - 10.0f);
-    D2D1_RECT_F volTrack = D2D1::RectF(m_volSliderRect.left, rowTop + 14.0f, m_volSliderRect.right, rowTop + 18.0f);
-    m_renderTarget->FillRectangle(volTrack, m_trackBrush.Get());
+    // Volume slider with hover highlight
+    float volCenterY = (rowTop + rowBottom) * 0.5f;
+    m_volSliderRect = D2D1::RectF(rightX - 80.0f, rowTop + 6.0f, rightX, rowBottom - 6.0f);
+    bool hoverVol = m_isDraggingVolume ||
+        (m_isTrackingBarMouse && PtInRectF(m_volSliderRect, m_hoverMousePt.x, m_hoverMousePt.y));
+    float volHalfH = hoverVol ? 2.5f : 1.5f;
+
+    D2D1_ROUNDED_RECT volTrack = D2D1::RoundedRect(
+        D2D1::RectF(m_volSliderRect.left, volCenterY - volHalfH, m_volSliderRect.right, volCenterY + volHalfH),
+        volHalfH,
+        volHalfH);
+    m_barRenderTarget->FillRoundedRectangle(volTrack, hoverVol ? m_trackHoverBrush.Get() : m_trackBrush.Get());
 
     float volRatio = m_barState.muted ? 0.0f : static_cast<float>(std::clamp(m_barState.volume, 0, 100)) / 100.0f;
     float volFillX = m_volSliderRect.left + (m_volSliderRect.right - m_volSliderRect.left) * volRatio;
-    m_renderTarget->FillRectangle(D2D1::RectF(m_volSliderRect.left, rowTop + 14.0f, volFillX, rowTop + 18.0f), m_accentBrush.Get());
-    rightX -= 86.0f;
+    if (volFillX > m_volSliderRect.left)
+    {
+        D2D1_ROUNDED_RECT volFill = D2D1::RoundedRect(
+            D2D1::RectF(m_volSliderRect.left, volCenterY - volHalfH, volFillX, volCenterY + volHalfH),
+            volHalfH,
+            volHalfH);
+        m_barRenderTarget->FillRoundedRectangle(volFill, hoverVol ? m_accentHoverBrush.Get() : m_accentBrush.Get());
+    }
 
-    std::wstring volLabel = m_barState.muted ? L"음소거" : (std::to_wstring(m_barState.volume) + L"%");
-    m_btnMute = D2D1::RectF(rightX - 54.0f, rowTop, rightX, rowBottom);
-    DrawButton(m_btnMute, volLabel, m_barState.muted);
+    float volThumbR = hoverVol ? 5.2f : 3.8f;
+    m_barRenderTarget->FillEllipse(D2D1::Ellipse(D2D1::Point2F(volFillX, volCenterY), volThumbR, volThumbR), m_barTextBrush.Get());
+    rightX -= 88.0f;
+
+    // Volume / Mute Icon: \uE767 (🔊), \uE74F (🔇)
+    bool isMuted = m_barState.muted || (m_barState.volume <= 0);
+    m_btnMute = D2D1::RectF(rightX - 36.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnMute, isMuted ? L"\uE74F" : L"\uE767", m_iconTextFormat.Get(), m_barState.muted);
+
+    HRESULT hr = m_barRenderTarget->EndDraw();
+    if (hr == D2DERR_RECREATE_TARGET)
+    {
+        DiscardControlBarResources();
+    }
 }
 
-void MainView::DrawButton(const D2D1_RECT_F& rect, const std::wstring& label, bool active)
+void MainView::DrawButton(const D2D1_RECT_F& rect, const std::wstring& label, IDWriteTextFormat* textFormat, bool active)
 {
-    D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(rect, 4.0f, 4.0f);
-    m_renderTarget->FillRoundedRectangle(rounded, active ? m_accentBrush.Get() : m_btnBrush.Get());
-    m_renderTarget->DrawTextW(
+    bool hovered = m_isTrackingBarMouse && PtInRectF(rect, m_hoverMousePt.x, m_hoverMousePt.y);
+    D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(rect, 6.0f, 6.0f);
+
+    if (active)
+    {
+        m_barRenderTarget->FillRoundedRectangle(rounded, hovered ? m_accentHoverBrush.Get() : m_accentBrush.Get());
+    }
+    else if (hovered)
+    {
+        m_barRenderTarget->FillRoundedRectangle(rounded, m_btnHoverBrush.Get());
+        m_barRenderTarget->DrawRoundedRectangle(rounded, m_btnBorderBrush.Get(), 1.0f);
+    }
+    else
+    {
+        m_barRenderTarget->FillRoundedRectangle(rounded, m_btnBrush.Get());
+    }
+
+    IDWriteTextFormat* fmt = textFormat ? textFormat : m_uiTextFormat.Get();
+    m_barRenderTarget->DrawTextW(
         label.c_str(),
         static_cast<UINT32>(label.length()),
-        m_uiTextFormat.Get(),
+        fmt,
         rect,
-        m_textBrush.Get());
+        (active || hovered) ? m_barTextBrush.Get() : m_barSubTextBrush.Get());
 }
 
 std::wstring MainView::FormatTime(double seconds)
@@ -812,6 +1047,16 @@ ATOM MainView::RegisterWindowClass(HINSTANCE hInstance) const
 
 void MainView::RegisterHelperClasses(HINSTANCE hInstance) const
 {
+    WNDCLASSEXW barWc{};
+    barWc.cbSize = sizeof(WNDCLASSEXW);
+    barWc.style = CS_HREDRAW | CS_VREDRAW;
+    barWc.lpfnWndProc = MainView::ControlBarWndProc;
+    barWc.hInstance = hInstance;
+    barWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    barWc.hbrBackground = nullptr;
+    barWc.lpszClassName = kControlBarClassName;
+    RegisterClassExW(&barWc);
+
     WNDCLASSEXW settingsWc{};
     settingsWc.cbSize = sizeof(WNDCLASSEXW);
     settingsWc.lpfnWndProc = SettingsWndProc;
@@ -848,9 +1093,54 @@ HRESULT MainView::CreateDeviceIndependentResources()
         return hr;
     }
 
+    // Load bundled NanumSquare fonts for GDI & DirectWrite
+    std::vector<std::wstring> fontPaths = GetBundledFontPaths();
+    for (const auto& path : fontPaths)
+    {
+        AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
+    }
+
+    Microsoft::WRL::ComPtr<IDWriteFactory5> dwriteFactory5;
+    if (!fontPaths.empty() && SUCCEEDED(m_dwriteFactory.As(&dwriteFactory5)))
+    {
+        Microsoft::WRL::ComPtr<IDWriteFontSetBuilder1> fontSetBuilder;
+        if (SUCCEEDED(dwriteFactory5->CreateFontSetBuilder(&fontSetBuilder)))
+        {
+            for (const auto& path : fontPaths)
+            {
+                Microsoft::WRL::ComPtr<IDWriteFontFile> fontFile;
+                if (SUCCEEDED(dwriteFactory5->CreateFontFileReference(path.c_str(), nullptr, &fontFile)))
+                {
+                    fontSetBuilder->AddFontFile(fontFile.Get());
+                }
+            }
+            Microsoft::WRL::ComPtr<IDWriteFontSet> fontSet;
+            if (SUCCEEDED(fontSetBuilder->CreateFontSet(&fontSet)))
+            {
+                dwriteFactory5->CreateFontCollectionFromFontSet(fontSet.Get(), &m_customFontCollection);
+            }
+        }
+    }
+
+    IDWriteFontCollection* korCollection = m_customFontCollection.Get();
+    const wchar_t* korFontName = korCollection ? L"NanumSquare" : L"Malgun Gothic";
+
+    Microsoft::WRL::ComPtr<IDWriteFontCollection> sysCollection;
+    m_dwriteFactory->GetSystemFontCollection(&sysCollection);
+    if (!korCollection && sysCollection)
+    {
+        UINT32 idx = 0;
+        BOOL exists = FALSE;
+        if (SUCCEEDED(sysCollection->FindFamilyName(L"NanumSquare", &idx, &exists)) && exists)
+        {
+            korFontName = L"NanumSquare";
+        }
+    }
+
+    // 1. Main status text (NanumSquare Regular 18pt)
     hr = m_dwriteFactory->CreateTextFormat(
-        L"Malgun Gothic",
-        nullptr,
+        korFontName,
+        korCollection,
         DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL,
@@ -861,14 +1151,14 @@ HRESULT MainView::CreateDeviceIndependentResources()
     {
         return hr;
     }
-
     m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
+    // 2. Korean UI button text (NanumSquare Bold 12.5pt)
     hr = m_dwriteFactory->CreateTextFormat(
-        L"Malgun Gothic",
-        nullptr,
-        DWRITE_FONT_WEIGHT_SEMI_BOLD,
+        korFontName,
+        korCollection,
+        DWRITE_FONT_WEIGHT_BOLD,
         DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL,
         12.5f,
@@ -878,9 +1168,71 @@ HRESULT MainView::CreateDeviceIndependentResources()
     {
         return hr;
     }
-
     m_uiTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     m_uiTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    // 3. Windows 10/11 Built-in Icon Font (Segoe Fluent Icons with fallback to Segoe MDL2 Assets)
+    const wchar_t* iconFontName = L"Segoe MDL2 Assets";
+    if (sysCollection)
+    {
+        UINT32 idx = 0;
+        BOOL exists = FALSE;
+        if (SUCCEEDED(sysCollection->FindFamilyName(L"Segoe Fluent Icons", &idx, &exists)) && exists)
+        {
+            iconFontName = L"Segoe Fluent Icons";
+        }
+    }
+
+    hr = m_dwriteFactory->CreateTextFormat(
+        iconFontName,
+        nullptr,
+        DWRITE_FONT_WEIGHT_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL,
+        15.0f,
+        L"en-us",
+        m_iconTextFormat.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    m_iconTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    m_iconTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    // 4. Timer text (Segoe UI SemiBold 12.5pt, left-aligned)
+    hr = m_dwriteFactory->CreateTextFormat(
+        L"Segoe UI",
+        nullptr,
+        DWRITE_FONT_WEIGHT_SEMI_BOLD,
+        DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL,
+        12.5f,
+        L"en-us",
+        m_timerTextFormat.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    m_timerTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+    m_timerTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    // 5. Speed text (Segoe UI SemiBold 12.0pt, centered)
+    hr = m_dwriteFactory->CreateTextFormat(
+        L"Segoe UI",
+        nullptr,
+        DWRITE_FONT_WEIGHT_SEMI_BOLD,
+        DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL,
+        12.0f,
+        L"en-us",
+        m_speedTextFormat.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    m_speedTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    m_speedTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
     return S_OK;
 }
 
@@ -904,23 +1256,87 @@ HRESULT MainView::CreateDeviceResources()
         return hr;
     }
 
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.92f, 0.92f, 0.92f), m_textBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.08f, 0.08f, 0.10f), m_barBgBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.22f, 0.22f, 0.26f), m_btnBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.18f, 0.52f, 0.92f), m_accentBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.30f, 0.30f, 0.35f), m_trackBrush.GetAddressOf());
-    return m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 0.75f, 0.15f), m_abMarkerBrush.GetAddressOf());
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.08f, 0.08f, 0.10f), m_mainBgBrush.GetAddressOf());
+    return m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.88f, 0.88f, 0.88f), m_mainTextBrush.GetAddressOf());
 }
 
 void MainView::DiscardDeviceResources()
 {
+    m_mainTextBrush.Reset();
+    m_mainBgBrush.Reset();
+    m_renderTarget.Reset();
+}
+
+HRESULT MainView::CreateControlBarResources()
+{
+    if (m_barRenderTarget)
+    {
+        return S_OK;
+    }
+
+    if (!m_controlBarHwnd || !IsWindow(m_controlBarHwnd))
+    {
+        return E_FAIL;
+    }
+
+    RECT rc{};
+    GetClientRect(m_controlBarHwnd, &rc);
+
+    D2D1_SIZE_U size = D2D1::SizeU(std::max(1L, rc.right - rc.left), std::max(1L, rc.bottom - rc.top));
+    HRESULT hr = m_d2dFactory->CreateHwndRenderTarget(
+        D2D1::RenderTargetProperties(),
+        D2D1::HwndRenderTargetProperties(m_controlBarHwnd, size),
+        m_barRenderTarget.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    D2D1_GRADIENT_STOP stops[2]{};
+    stops[0].position = 0.0f;
+    stops[0].color = D2D1::ColorF(0x232327);
+    stops[1].position = 1.0f;
+    stops[1].color = D2D1::ColorF(0x18181B);
+
+    Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> stopCollection;
+    if (SUCCEEDED(m_barRenderTarget->CreateGradientStopCollection(stops, 2, &stopCollection)))
+    {
+        m_barRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F(0.0f, 0.0f),
+                D2D1::Point2F(0.0f, static_cast<float>(kControlBarHeight))),
+            stopCollection.Get(),
+            m_barGradientBrush.GetAddressOf());
+    }
+
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0xF5F5F7), m_barTextBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0xD4D4DC), m_barSubTextBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x1E1E1E), m_barBgBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x25252A), m_btnBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x32323A), m_btnHoverBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x3D3D47), m_btnBorderBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x2478E8), m_accentBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x3B8EFF), m_accentHoverBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x383842), m_trackBrush.GetAddressOf());
+    m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x565664), m_trackHoverBrush.GetAddressOf());
+    return m_barRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFBE26), m_abMarkerBrush.GetAddressOf());
+}
+
+void MainView::DiscardControlBarResources()
+{
     m_abMarkerBrush.Reset();
+    m_trackHoverBrush.Reset();
     m_trackBrush.Reset();
+    m_accentHoverBrush.Reset();
     m_accentBrush.Reset();
+    m_btnBorderBrush.Reset();
+    m_btnHoverBrush.Reset();
     m_btnBrush.Reset();
     m_barBgBrush.Reset();
-    m_textBrush.Reset();
-    m_renderTarget.Reset();
+    m_barSubTextBrush.Reset();
+    m_barTextBrush.Reset();
+    m_barGradientBrush.Reset();
+    m_barRenderTarget.Reset();
 }
 
 void MainView::UpdateLayout()
@@ -934,29 +1350,65 @@ void MainView::UpdateLayout()
     GetClientRect(m_hWnd, &rc);
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
-    int videoH = m_isControlBarVisible ? std::max(0, h - kControlBarHeight) : h;
 
-    if (m_videoHwnd)
+    if (m_isFullscreen)
     {
-        MoveWindow(m_videoHwnd, 0, 0, w, videoH, TRUE);
+        if (m_controlBarHwnd)
+        {
+            SetWindowPos(
+                m_controlBarHwnd,
+                HWND_TOP,
+                0,
+                h - kControlBarHeight,
+                w,
+                kControlBarHeight,
+                (m_isControlBarVisible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW) | SWP_NOACTIVATE);
+        }
+
+        if (m_videoHwnd)
+        {
+            SetWindowPos(
+                m_videoHwnd,
+                HWND_BOTTOM,
+                0,
+                0,
+                w,
+                h,
+                SWP_NOACTIVATE);
+        }
+    }
+    else
+    {
+        int videoH = std::max(0, h - kControlBarHeight);
+        if (m_controlBarHwnd)
+        {
+            SetWindowPos(
+                m_controlBarHwnd,
+                HWND_TOP,
+                0,
+                videoH,
+                w,
+                kControlBarHeight,
+                SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        }
+
+        if (m_videoHwnd)
+        {
+            SetWindowPos(
+                m_videoHwnd,
+                HWND_BOTTOM,
+                0,
+                0,
+                w,
+                videoH,
+                SWP_NOACTIVATE);
+        }
     }
 
     if (m_renderTarget)
     {
         m_renderTarget->Resize(D2D1::SizeU(w, h));
     }
-}
-
-void MainView::SetControlBarVisible(bool visible)
-{
-    if (m_isControlBarVisible == visible)
-    {
-        return;
-    }
-
-    m_isControlBarVisible = visible;
-    UpdateLayout();
-    Render();
 }
 
 LRESULT CALLBACK MainView::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -978,6 +1430,77 @@ LRESULT CALLBACK MainView::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
     if (view)
     {
         return view->HandleMessage(message, wParam, lParam);
+    }
+
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
+LRESULT CALLBACK MainView::ControlBarWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    MainView* view = nullptr;
+
+    if (message == WM_NCCREATE)
+    {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        view = static_cast<MainView*>(cs->lpCreateParams);
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(view));
+    }
+    else
+    {
+        view = reinterpret_cast<MainView*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+    }
+
+    if (view)
+    {
+        return view->HandleControlBarMessage(hWnd, message, wParam, lParam);
+    }
+
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
+LRESULT MainView::HandleControlBarMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps{};
+        BeginPaint(hWnd, &ps);
+        DrawControlBar();
+        EndPaint(hWnd, &ps);
+        return 0;
+    }
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_SIZE:
+    {
+        UINT width = LOWORD(lParam);
+        UINT height = HIWORD(lParam);
+        if (m_barRenderTarget)
+        {
+            m_barRenderTarget->Resize(D2D1::SizeU(width, height));
+        }
+        return 0;
+    }
+    case WM_LBUTTONDOWN:
+        OnControlBarLButtonDown(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+        return 0;
+    case WM_MOUSEMOVE:
+        OnControlBarMouseMove(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+        return 0;
+    case WM_MOUSELEAVE:
+        OnControlBarMouseLeave();
+        return 0;
+    case WM_LBUTTONUP:
+        OnControlBarLButtonUp(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+        return 0;
+    case WM_KEYDOWN:
+        // Forward shortcut keys to main window
+        SendMessageW(m_hWnd, WM_KEYDOWN, wParam, lParam);
+        return 0;
+    case WM_DESTROY:
+        DiscardControlBarResources();
+        return 0;
     }
 
     return DefWindowProcW(hWnd, message, wParam, lParam);
@@ -1012,7 +1535,7 @@ LRESULT MainView::HandlePlaylistMessage(HWND hWnd, UINT message, WPARAM wParam, 
     {
     case WM_CREATE:
     {
-        HFONT hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        HFONT hFont = GetNanumDialogFont();
         m_playlistListBox = CreateWindowExW(
             WS_EX_CLIENTEDGE,
             L"LISTBOX",
@@ -1078,7 +1601,10 @@ LRESULT MainView::HandlePlaylistMessage(HWND hWnd, UINT message, WPARAM wParam, 
     }
     case WM_CLOSE:
         ShowWindow(hWnd, SW_HIDE);
-        Render();
+        if (m_controlBarHwnd)
+        {
+            InvalidateRect(m_controlBarHwnd, nullptr, FALSE);
+        }
         return 0;
     }
     return DefWindowProcW(hWnd, message, wParam, lParam);
@@ -1110,28 +1636,9 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
-    case WM_LBUTTONDOWN:
-        OnLButtonDown(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
-        return 0;
-
-    case WM_MOUSEMOVE:
-        OnMouseMove(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
-        return 0;
-
-    case WM_LBUTTONUP:
-        OnLButtonUp(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
-        return 0;
-
     case WM_LBUTTONDBLCLK:
     {
-        float y = static_cast<float>(GET_Y_LPARAM(lParam));
-        RECT rc{};
-        GetClientRect(m_hWnd, &rc);
-        float videoBottom = m_isControlBarVisible ? static_cast<float>(rc.bottom - kControlBarHeight) : static_cast<float>(rc.bottom);
-        if (y < videoBottom)
-        {
-            ToggleFullscreen();
-        }
+        ToggleFullscreen();
         return 0;
     }
 
@@ -1301,19 +1808,14 @@ void MainView::OnKeyDown(WPARAM key)
     }
 }
 
-void MainView::OnLButtonDown(float x, float y)
+void MainView::OnControlBarLButtonDown(float x, float y)
 {
     SetFocus(m_hWnd);
-
-    if (!m_isControlBarVisible)
-    {
-        return;
-    }
 
     if (PtInRectF(m_seekBarRect, x, y))
     {
         m_isDraggingSeek = true;
-        SetCapture(m_hWnd);
+        SetCapture(m_controlBarHwnd);
         SeekFromMouseX(x);
         return;
     }
@@ -1321,7 +1823,7 @@ void MainView::OnLButtonDown(float x, float y)
     if (PtInRectF(m_volSliderRect, x, y))
     {
         m_isDraggingVolume = true;
-        SetCapture(m_hWnd);
+        SetCapture(m_controlBarHwnd);
         VolumeFromMouseX(x);
         return;
     }
@@ -1340,9 +1842,18 @@ void MainView::OnLButtonDown(float x, float y)
     else if (PtInRectF(m_btnSettings, x, y) && m_onSettingsRequested) m_onSettingsRequested();
 }
 
-void MainView::OnMouseMove(float x, float y)
+void MainView::OnControlBarMouseMove(float x, float y)
 {
-    UNREFERENCED_PARAMETER(y);
+    m_hoverMousePt = D2D1::Point2F(x, y);
+
+    if (!m_isTrackingBarMouse && m_controlBarHwnd)
+    {
+        TRACKMOUSEEVENT tme{ sizeof(TRACKMOUSEEVENT), TME_LEAVE, m_controlBarHwnd, 0 };
+        if (TrackMouseEvent(&tme))
+        {
+            m_isTrackingBarMouse = true;
+        }
+    }
 
     if (m_isDraggingSeek)
     {
@@ -1352,15 +1863,34 @@ void MainView::OnMouseMove(float x, float y)
     {
         VolumeFromMouseX(x);
     }
+
+    if (m_controlBarHwnd)
+    {
+        InvalidateRect(m_controlBarHwnd, nullptr, FALSE);
+    }
 }
 
-void MainView::OnLButtonUp(float, float)
+void MainView::OnControlBarMouseLeave()
+{
+    m_isTrackingBarMouse = false;
+    m_hoverMousePt = D2D1::Point2F(-1.0f, -1.0f);
+    if (m_controlBarHwnd)
+    {
+        InvalidateRect(m_controlBarHwnd, nullptr, FALSE);
+    }
+}
+
+void MainView::OnControlBarLButtonUp(float, float)
 {
     if (m_isDraggingSeek || m_isDraggingVolume)
     {
         m_isDraggingSeek = false;
         m_isDraggingVolume = false;
         ReleaseCapture();
+        if (m_controlBarHwnd)
+        {
+            InvalidateRect(m_controlBarHwnd, nullptr, FALSE);
+        }
     }
 }
 

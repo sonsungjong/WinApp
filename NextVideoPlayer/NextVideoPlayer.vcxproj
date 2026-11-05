@@ -200,7 +200,9 @@
     <ResourceCompile Include="NextVideoPlayer.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="img\next_video_player.png" />
     <Image Include="NextVideoPlayer.ico" />
+    <Image Include="next_video_player.ico" />
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>

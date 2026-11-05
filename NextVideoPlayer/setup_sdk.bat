@@ -51,4 +51,48 @@ if not exist "%PROJECT_DIR%libmpv-2.dll" (
     )
 )
 
+set "FONT_DIR=%PROJECT_DIR%ThirdParty\fonts"
+set "FONT_R_URL=https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquare/NanumSquareR.ttf"
+set "FONT_B_URL=https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquare/NanumSquareB.ttf"
+set "USER_FONT_DIR=%LOCALAPPDATA%\Microsoft\Windows\Fonts"
+
+if not exist "%FONT_DIR%" mkdir "%FONT_DIR%"
+
+if /I "%~1"=="--force" (
+    if exist "%FONT_DIR%\NanumSquareR.ttf" del /f /q "%FONT_DIR%\NanumSquareR.ttf"
+    if exist "%FONT_DIR%\NanumSquareB.ttf" del /f /q "%FONT_DIR%\NanumSquareB.ttf"
+)
+
+if not exist "%FONT_DIR%\NanumSquareR.ttf" (
+    echo [setup_sdk] Downloading NanumSquareR.ttf...
+    curl.exe -L --fail "%FONT_R_URL%" -o "%FONT_DIR%\NanumSquareR.ttf"
+)
+
+if not exist "%FONT_DIR%\NanumSquareB.ttf" (
+    echo [setup_sdk] Downloading NanumSquareB.ttf...
+    curl.exe -L --fail "%FONT_B_URL%" -o "%FONT_DIR%\NanumSquareB.ttf"
+)
+
+if not exist "%WINDIR%\Fonts\NanumSquareR.ttf" (
+    if not exist "%USER_FONT_DIR%\NanumSquareR.ttf" (
+        if exist "%FONT_DIR%\NanumSquareR.ttf" (
+            echo [setup_sdk] Installing NanumSquare Regular font...
+            if not exist "%USER_FONT_DIR%" mkdir "%USER_FONT_DIR%"
+            copy /y "%FONT_DIR%\NanumSquareR.ttf" "%USER_FONT_DIR%\NanumSquareR.ttf" >nul
+            reg add "HKCU\Software\Microsoft\Windows NT\CurrentVersion\Fonts" /v "NanumSquare Regular (TrueType)" /t REG_SZ /d "%USER_FONT_DIR%\NanumSquareR.ttf" /f >nul
+        )
+    )
+)
+
+if not exist "%WINDIR%\Fonts\NanumSquareB.ttf" (
+    if not exist "%USER_FONT_DIR%\NanumSquareB.ttf" (
+        if exist "%FONT_DIR%\NanumSquareB.ttf" (
+            echo [setup_sdk] Installing NanumSquare Bold font...
+            if not exist "%USER_FONT_DIR%" mkdir "%USER_FONT_DIR%"
+            copy /y "%FONT_DIR%\NanumSquareB.ttf" "%USER_FONT_DIR%\NanumSquareB.ttf" >nul
+            reg add "HKCU\Software\Microsoft\Windows NT\CurrentVersion\Fonts" /v "NanumSquare Bold (TrueType)" /t REG_SZ /d "%USER_FONT_DIR%\NanumSquareB.ttf" /f >nul
+        )
+    )
+)
+
 exit /b 0

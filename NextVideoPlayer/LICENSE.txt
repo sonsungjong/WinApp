@@ -27,6 +27,10 @@ This software uses the following open-source libraries:
    - License: Mozilla Public License 1.1 (MPL 1.1) / GNU LGPL version 2.1 or later
    - Source: https://gitlab.freedesktop.org/uchardet/uchardet
 
+6. Naver NanumSquare Font (나눔스퀘어)
+   - Copyright (c) NAVER Corp. (https://hangeul.naver.com)
+   - License: SIL Open Font License, Version 1.1 (http://scripts.sil.org/OFL)
+
 --------------------------------------------------------------------------------
 GNU LESSER GENERAL PUBLIC LICENSE
 Version 2.1, February 1999

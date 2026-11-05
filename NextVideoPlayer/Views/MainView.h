@@ -61,8 +61,11 @@ public:
 
 private:
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK ControlBarWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK PlaylistWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
+    LRESULT HandleControlBarMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandlePlaylistMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
     ATOM RegisterWindowClass(HINSTANCE hInstance) const;
@@ -72,10 +75,13 @@ private:
     HRESULT CreateDeviceResources();
     void DiscardDeviceResources();
 
+    HRESULT CreateControlBarResources();
+    void DiscardControlBarResources();
+
     void UpdateLayout();
     void SetControlBarVisible(bool visible);
-    void DrawControlBar(const D2D1_SIZE_F& rtSize);
-    void DrawButton(const D2D1_RECT_F& rect, const std::wstring& label, bool active = false);
+    void DrawControlBar();
+    void DrawButton(const D2D1_RECT_F& rect, const std::wstring& label, IDWriteTextFormat* textFormat, bool active = false);
     static std::wstring FormatTime(double seconds);
     static bool PtInRectF(const D2D1_RECT_F& rect, float x, float y);
 
@@ -83,15 +89,17 @@ private:
     void OnCommand(int commandId);
     void OnDropFiles(HDROP hDrop);
     void OnKeyDown(WPARAM key);
-    void OnLButtonDown(float x, float y);
-    void OnLButtonUp(float x, float y);
-    void OnMouseMove(float x, float y);
+    void OnControlBarLButtonDown(float x, float y);
+    void OnControlBarLButtonUp(float x, float y);
+    void OnControlBarMouseMove(float x, float y);
+    void OnControlBarMouseLeave();
     void SeekFromMouseX(float x);
     void VolumeFromMouseX(float x);
 
     HINSTANCE m_hInstance = nullptr;
     HWND m_hWnd = nullptr;
     HWND m_videoHwnd = nullptr;
+    HWND m_controlBarHwnd = nullptr;
     HMENU m_hMenu = nullptr;
 
     HWND m_playlistHwnd = nullptr;
@@ -110,6 +118,8 @@ private:
     ULONGLONG m_lastMouseActiveTick = 0;
     bool m_isDraggingSeek = false;
     bool m_isDraggingVolume = false;
+    bool m_isTrackingBarMouse = false;
+    D2D1_POINT_2F m_hoverMousePt{ -1.0f, -1.0f };
 
     std::wstring m_windowClass;
     std::wstring m_defaultTitle;
@@ -133,14 +143,31 @@ private:
 
     Microsoft::WRL::ComPtr<ID2D1Factory> m_d2dFactory;
     Microsoft::WRL::ComPtr<IDWriteFactory> m_dwriteFactory;
+    Microsoft::WRL::ComPtr<IDWriteFontCollection1> m_customFontCollection;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_textFormat;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_uiTextFormat;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> m_iconTextFormat;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> m_timerTextFormat;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> m_speedTextFormat;
+
+    // Main window direct2d
     Microsoft::WRL::ComPtr<ID2D1HwndRenderTarget> m_renderTarget;
-    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_textBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_mainBgBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_mainTextBrush;
+
+    // Control bar direct2d
+    Microsoft::WRL::ComPtr<ID2D1HwndRenderTarget> m_barRenderTarget;
+    Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> m_barGradientBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_barTextBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_barSubTextBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_barBgBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_btnBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_btnHoverBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_btnBorderBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_accentBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_accentHoverBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_trackBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_trackHoverBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_abMarkerBrush;
 
     std::function<void()> m_onOpenFileRequested;

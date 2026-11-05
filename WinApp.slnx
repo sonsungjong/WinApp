@@ -4,9 +4,10 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="EOIRUI/EOIRUI.csproj" Id="2b42d2d4-952c-4aab-9cf1-1489fb6deb5f" />
   <Project Path="D2DLL/D2DLL.vcxproj" Id="65278365-8def-4245-99a7-aead3c5ae9c5" />
+  <Project Path="EOIRUI/EOIRUI.csproj" Id="2b42d2d4-952c-4aab-9cf1-1489fb6deb5f" />
   <Project Path="MVVM_RJ/MVVM_RJ.csproj" Id="f6bab579-c10e-4c33-b169-db7a164a29d5" />
+  <Project Path="NextVideoPlayer/NextVideoPlayer.vcxproj" Id="4a7216d8-6965-4d82-a346-590df80f458a" />
   <Project Path="WinApp/WinApp.csproj" />
   <Project Path="WinUIApp1/WinUIApp1.csproj" Id="0999e1f9-0001-438b-958d-599c113cd0b1">
     <Platform Solution="*|Any CPU" Project="x64" />

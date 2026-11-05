@@ -1,5 +1,6 @@
 #include "framework.h"
 #include "NextVideoPlayer.h"
+#include "Models/ConfigService.h"
 #include "Models/VideoModel.h"
 #include "Presenters/MainPresenter.h"
 #include "Views/MainView.h"
@@ -19,6 +20,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     int exitCode = 0;
     {
+        ConfigService configService;
         VideoModel model;
         MainView view;
 
@@ -28,7 +30,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             return FALSE;
         }
 
-        MainPresenter presenter(view, model);
+        MainPresenter presenter(view, model, configService);
         if (!presenter.Initialize())
         {
             CoUninitialize();
@@ -59,10 +61,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                 break;
             }
 
-            if (presenter.IsPlaying())
+            if (presenter.IsActiveLoop())
             {
                 presenter.Tick();
-                MsgWaitForMultipleObjectsEx(0, nullptr, 16, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+                MsgWaitForMultipleObjectsEx(0, nullptr, 33, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             }
             else
             {

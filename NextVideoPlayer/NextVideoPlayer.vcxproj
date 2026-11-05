@@ -70,6 +70,12 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -166,6 +172,8 @@ xcopy /Y /D "$(ProjectDir)LICENSE.txt" "$(OutDir)"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="Models\AppConfig.h" />
+    <ClInclude Include="Models\ConfigService.h" />
     <ClInclude Include="Models\IVideoModel.h" />
     <ClInclude Include="Models\VideoModel.h" />
     <ClInclude Include="NextVideoPlayer.h" />
@@ -176,6 +184,7 @@ xcopy /Y /D "$(ProjectDir)LICENSE.txt" "$(OutDir)"</Command>
     <ClInclude Include="Views\MainView.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Models\ConfigService.cpp" />
     <ClCompile Include="Models\VideoModel.cpp" />
     <ClCompile Include="NextVideoPlayer.cpp" />
     <ClCompile Include="Presenters\MainPresenter.cpp" />

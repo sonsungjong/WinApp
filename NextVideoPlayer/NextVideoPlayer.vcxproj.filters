@@ -20,6 +20,12 @@
     <ClInclude Include="NextVideoPlayer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Models\AppConfig.h">
+      <Filter>Models</Filter>
+    </ClInclude>
+    <ClInclude Include="Models\ConfigService.h">
+      <Filter>Models</Filter>
+    </ClInclude>
     <ClInclude Include="Models\IVideoModel.h">
       <Filter>Models</Filter>
     </ClInclude>
@@ -38,6 +44,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="NextVideoPlayer.cpp" />
+    <ClCompile Include="Models\ConfigService.cpp">
+      <Filter>Models</Filter>
+    </ClCompile>
     <ClCompile Include="Models\VideoModel.cpp">
       <Filter>Models</Filter>
     </ClCompile>

@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <windowsx.h>
 #include <commdlg.h>
 #include <shellapi.h>
 #include <objbase.h>
@@ -16,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #pragma comment(lib, "d2d1.lib")
 #pragma comment(lib, "dwrite.lib")

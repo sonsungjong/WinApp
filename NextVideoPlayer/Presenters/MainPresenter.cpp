@@ -1,43 +1,95 @@
 #include "Presenters/MainPresenter.h"
+#include <algorithm>
+#include <cwctype>
 #include <filesystem>
 
-MainPresenter::MainPresenter(IMainView& view, IVideoModel& model)
+MainPresenter::MainPresenter(IMainView& view, IVideoModel& model, ConfigService& configService)
     : m_view(view)
     , m_model(model)
+    , m_configService(configService)
 {
+}
+
+MainPresenter::~MainPresenter()
+{
+    SaveConfig();
 }
 
 bool MainPresenter::Initialize()
 {
+    m_config = m_configService.Load();
+
     if (!m_model.Initialize(m_view.GetVideoHwnd()))
     {
         return false;
     }
 
+    ApplyConfig();
+
     m_view.SetOnOpenFileRequested([this]() { OnOpenFileRequested(); });
-    m_view.SetOnFileDropped([this](const std::wstring& path) { OnFileDropped(path); });
+    m_view.SetOnOpenSubtitleRequested([this]() { OnOpenSubtitleRequested(); });
+    m_view.SetOnScreenshotRequested([this]() { OnScreenshotRequested(); });
+    m_view.SetOnFilesDropped([this](const std::vector<std::wstring>& files) { OnFilesDropped(files); });
     m_view.SetOnPlayPauseRequested([this]() { OnPlayPauseRequested(); });
     m_view.SetOnStopRequested([this]() { OnStopRequested(); });
+    m_view.SetOnPrevRequested([this]() { OnPrevRequested(); });
+    m_view.SetOnNextRequested([this]() { OnNextRequested(); });
+    m_view.SetOnSeekAbsolute([this](double sec) { OnSeekAbsolute(sec); });
+    m_view.SetOnSeekDirection([this](int dir) { OnSeekDirection(dir); });
+    m_view.SetOnVolumeChanged([this](int vol) { OnVolumeChanged(vol); });
+    m_view.SetOnVolumeStep([this](int delta) { OnVolumeStep(delta); });
+    m_view.SetOnMuteToggled([this]() { OnMuteToggled(); });
+    m_view.SetOnSpeedStep([this](double delta) { OnSpeedStep(delta); });
+    m_view.SetOnSpeedReset([this]() { OnSpeedReset(); });
     m_view.SetOnRepeatToggled([this]() { OnRepeatToggled(); });
+    m_view.SetOnABLoopAction([this](int action) { OnABLoopAction(action); });
+    m_view.SetOnSubtitleToggle([this]() { OnSubtitleToggle(); });
+    m_view.SetOnSubtitleDelayStep([this](double delta) { OnSubtitleDelayStep(delta); });
+    m_view.SetOnSubtitleScaleStep([this](double delta) { OnSubtitleScaleStep(delta); });
+    m_view.SetOnSubtitlePosStep([this](int delta) { OnSubtitlePosStep(delta); });
+    m_view.SetOnTopMostToggled([this]() { OnTopMostToggled(); });
+    m_view.SetOnSettingsRequested([this]() { OnSettingsRequested(); });
+    m_view.SetOnPlaylistPlayIndex([this](int idx) { OnPlaylistPlayIndex(idx); });
+    m_view.SetOnPlaylistAddFiles([this]() { OnPlaylistAddFiles(); });
+    m_view.SetOnPlaylistRemoveIndex([this](int idx) { OnPlaylistRemoveIndex(idx); });
+    m_view.SetOnPlaylistClear([this]() { OnPlaylistClear(); });
 
-    m_view.SetRepeatChecked(m_model.IsRepeatEnabled());
     UpdateView();
     return true;
 }
 
 void MainPresenter::Tick()
 {
-    PlaybackState prevState = m_model.GetState();
     m_model.ProcessEvents();
-    if (m_model.GetState() != prevState)
-    {
-        UpdateView();
-    }
+    m_view.UpdateFullscreenAutoHide();
+    UpdateView();
 }
 
-bool MainPresenter::IsPlaying() const
+bool MainPresenter::IsActiveLoop() const
 {
-    return m_model.GetState() == PlaybackState::Playing;
+    return m_model.GetState() == PlaybackState::Playing || m_view.IsFullscreen();
+}
+
+void MainPresenter::ApplyConfig()
+{
+    m_model.SetRepeat(m_config.repeatEnabled);
+    m_model.SetVolume(m_config.volume);
+    m_model.SetMuted(m_config.muted);
+    m_model.SetSpeed(m_config.speed);
+    m_model.SetSubtitleVisible(m_config.subtitleVisible);
+    m_model.SetSubtitleScale(m_config.subtitleScale);
+    m_view.SetTopMost(m_config.topMost);
+}
+
+void MainPresenter::SaveConfig()
+{
+    m_config.repeatEnabled = m_model.IsRepeatEnabled();
+    m_config.volume = m_model.GetVolume();
+    m_config.muted = m_model.IsMuted();
+    m_config.speed = m_model.GetSpeed();
+    m_config.subtitleVisible = m_model.IsSubtitleVisible();
+    m_config.subtitleScale = m_model.GetSubtitleScale();
+    m_configService.Save(m_config);
 }
 
 void MainPresenter::OnOpenFileRequested()
@@ -45,19 +97,77 @@ void MainPresenter::OnOpenFileRequested()
     std::wstring selectedPath = m_view.PromptOpenVideoFile();
     if (!selectedPath.empty())
     {
-        LoadAndPlayFile(selectedPath);
+        if (m_model.OpenFile(selectedPath))
+        {
+            m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
+            UpdateView();
+        }
     }
 }
 
-void MainPresenter::OnFileDropped(const std::wstring& filePath)
+void MainPresenter::OnOpenSubtitleRequested()
 {
-    LoadAndPlayFile(filePath);
+    if (!m_model.HasMedia())
+    {
+        return;
+    }
+
+    std::wstring subPath = m_view.PromptOpenSubtitleFile();
+    if (!subPath.empty())
+    {
+        m_model.LoadSubtitleFile(subPath);
+        UpdateView();
+    }
+}
+
+void MainPresenter::OnScreenshotRequested()
+{
+    if (m_model.GetState() == PlaybackState::Stopped)
+    {
+        return;
+    }
+
+    std::wstring savePath = m_view.PromptSaveScreenshotFile();
+    if (!savePath.empty())
+    {
+        m_model.TakeScreenshot(savePath);
+    }
+}
+
+void MainPresenter::OnFilesDropped(const std::vector<std::wstring>& files)
+{
+    std::wstring firstVideo;
+
+    for (const auto& file : files)
+    {
+        if (IsSubtitleExtension(file))
+        {
+            m_model.LoadSubtitleFile(file);
+        }
+        else
+        {
+            if (firstVideo.empty())
+            {
+                firstVideo = file;
+            }
+            m_model.AddToPlaylist(file);
+        }
+    }
+
+    if (!firstVideo.empty())
+    {
+        m_model.OpenFile(firstVideo);
+        m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
+    }
+
+    UpdateView();
 }
 
 void MainPresenter::OnPlayPauseRequested()
 {
     if (!m_model.HasMedia())
     {
+        OnOpenFileRequested();
         return;
     }
 
@@ -84,29 +194,203 @@ void MainPresenter::OnStopRequested()
     UpdateView();
 }
 
-void MainPresenter::OnRepeatToggled()
+void MainPresenter::OnPrevRequested()
 {
-    bool nextRepeat = !m_model.IsRepeatEnabled();
-    m_model.SetRepeat(nextRepeat);
-    m_view.SetRepeatChecked(nextRepeat);
-    UpdateView();
-}
-
-void MainPresenter::LoadAndPlayFile(const std::wstring& filePath)
-{
-    if (m_model.OpenFile(filePath))
+    if (m_model.PlayPrevious())
     {
+        m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
         UpdateView();
     }
 }
 
+void MainPresenter::OnNextRequested()
+{
+    if (m_model.PlayNext())
+    {
+        m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
+        UpdateView();
+    }
+}
+
+void MainPresenter::OnSeekAbsolute(double seconds)
+{
+    m_model.SeekAbsolute(seconds);
+    UpdateView();
+}
+
+void MainPresenter::OnSeekDirection(int direction)
+{
+    m_model.SeekRelative(static_cast<double>(direction * m_config.seekStepSeconds));
+    UpdateView();
+}
+
+void MainPresenter::OnVolumeChanged(int volume)
+{
+    m_model.SetMuted(false);
+    m_model.SetVolume(volume);
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnVolumeStep(int delta)
+{
+    m_model.SetMuted(false);
+    m_model.SetVolume(m_model.GetVolume() + delta);
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnMuteToggled()
+{
+    m_model.SetMuted(!m_model.IsMuted());
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnSpeedStep(double delta)
+{
+    m_model.SetSpeed(m_model.GetSpeed() + delta);
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnSpeedReset()
+{
+    m_model.SetSpeed(1.0);
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnRepeatToggled()
+{
+    m_model.SetRepeat(!m_model.IsRepeatEnabled());
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnABLoopAction(int action)
+{
+    if (action == 1)
+    {
+        m_model.SetABLoopA();
+    }
+    else if (action == 2)
+    {
+        m_model.SetABLoopB();
+    }
+    else
+    {
+        m_model.ClearABLoop();
+    }
+    UpdateView();
+}
+
+void MainPresenter::OnSubtitleToggle()
+{
+    m_model.SetSubtitleVisible(!m_model.IsSubtitleVisible());
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnSubtitleDelayStep(double delta)
+{
+    m_model.AdjustSubtitleDelay(delta);
+    UpdateView();
+}
+
+void MainPresenter::OnSubtitleScaleStep(double delta)
+{
+    m_model.SetSubtitleScale(m_model.GetSubtitleScale() + delta);
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnSubtitlePosStep(int delta)
+{
+    m_model.AdjustSubtitlePos(delta);
+}
+
+void MainPresenter::OnTopMostToggled()
+{
+    m_config.topMost = !m_config.topMost;
+    m_view.SetTopMost(m_config.topMost);
+    SaveConfig();
+    UpdateView();
+}
+
+void MainPresenter::OnSettingsRequested()
+{
+    m_config.repeatEnabled = m_model.IsRepeatEnabled();
+    m_config.subtitleVisible = m_model.IsSubtitleVisible();
+
+    if (m_view.ShowSettingsModal(m_config))
+    {
+        ApplyConfig();
+        SaveConfig();
+        UpdateView();
+    }
+}
+
+void MainPresenter::OnPlaylistPlayIndex(int index)
+{
+    if (m_model.PlayPlaylistIndex(index))
+    {
+        m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
+        UpdateView();
+    }
+}
+
+void MainPresenter::OnPlaylistAddFiles()
+{
+    std::wstring path = m_view.PromptOpenVideoFile();
+    if (!path.empty())
+    {
+        m_model.AddToPlaylist(path);
+        m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
+    }
+}
+
+void MainPresenter::OnPlaylistRemoveIndex(int index)
+{
+    m_model.RemoveFromPlaylist(index);
+    m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
+}
+
+void MainPresenter::OnPlaylistClear()
+{
+    m_model.ClearPlaylist();
+    m_view.UpdatePlaylistView(m_model.GetPlaylist(), m_model.GetCurrentPlaylistIndex());
+}
+
+bool MainPresenter::IsSubtitleExtension(const std::wstring& filePath)
+{
+    std::wstring ext = std::filesystem::path(filePath).extension().wstring();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+    return ext == L".smi" || ext == L".srt" || ext == L".ass" || ext == L".ssa" || ext == L".vtt" || ext == L".sub";
+}
+
 void MainPresenter::UpdateView()
 {
+    ControlBarState barState{};
+    barState.playbackState = m_model.GetState();
+    barState.position = m_model.GetPosition();
+    barState.duration = m_model.GetDuration();
+    barState.volume = m_model.GetVolume();
+    barState.muted = m_model.IsMuted();
+    barState.speed = m_model.GetSpeed();
+    barState.repeatEnabled = m_model.IsRepeatEnabled();
+    barState.abLoopA = m_model.GetABLoopA();
+    barState.abLoopB = m_model.GetABLoopB();
+    barState.subtitleVisible = m_model.IsSubtitleVisible();
+    barState.subtitleDelay = m_model.GetSubtitleDelay();
+    barState.topMost = m_config.topMost;
+
     if (!m_model.HasMedia())
     {
         m_view.SetVideoVisible(false);
         m_view.SetWindowTitle(L"NextVideoPlayer");
         m_view.SetStatusText(L"동영상 파일을 열거나 창으로 드래그하세요.");
+        m_view.UpdateControlBar(barState);
         return;
     }
 
@@ -130,7 +414,8 @@ void MainPresenter::UpdateView()
         break;
     }
 
-    std::wstring repeatLabel = m_model.IsRepeatEnabled() ? L" [반복 ON]" : L" [반복 OFF]";
+    std::wstring repeatLabel = m_model.IsRepeatEnabled() ? L" [반복 ON]" : L"";
     m_view.SetWindowTitle(L"NextVideoPlayer - " + fileName + L" (" + stateLabel + L")" + repeatLabel);
     m_view.SetStatusText(fileName + L" (" + stateLabel + L")" + repeatLabel);
+    m_view.UpdateControlBar(barState);
 }

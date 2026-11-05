@@ -21,8 +21,47 @@ public:
     virtual void Stop() = 0;
     virtual void ProcessEvents() = 0;
 
+    virtual void SeekAbsolute(double seconds) = 0;
+    virtual void SeekRelative(double deltaSeconds) = 0;
+    virtual double GetPosition() const = 0;
+    virtual double GetDuration() const = 0;
+
+    virtual void SetVolume(int volume) = 0;
+    virtual int GetVolume() const = 0;
+    virtual void SetMuted(bool muted) = 0;
+    virtual bool IsMuted() const = 0;
+
+    virtual void SetSpeed(double speed) = 0;
+    virtual double GetSpeed() const = 0;
+
     virtual void SetRepeat(bool enabled) = 0;
     virtual bool IsRepeatEnabled() const = 0;
+
+    virtual void SetABLoopA() = 0;
+    virtual void SetABLoopB() = 0;
+    virtual void ClearABLoop() = 0;
+    virtual double GetABLoopA() const = 0;
+    virtual double GetABLoopB() const = 0;
+
+    virtual bool LoadSubtitleFile(const std::wstring& subFilePath) = 0;
+    virtual void SetSubtitleVisible(bool visible) = 0;
+    virtual bool IsSubtitleVisible() const = 0;
+    virtual void AdjustSubtitleDelay(double deltaSeconds) = 0;
+    virtual double GetSubtitleDelay() const = 0;
+    virtual void SetSubtitleScale(double scale) = 0;
+    virtual double GetSubtitleScale() const = 0;
+    virtual void AdjustSubtitlePos(int deltaPos) = 0;
+
+    virtual bool TakeScreenshot(const std::wstring& filePath) = 0;
+
+    virtual void AddToPlaylist(const std::wstring& filePath) = 0;
+    virtual void RemoveFromPlaylist(int index) = 0;
+    virtual void ClearPlaylist() = 0;
+    virtual bool PlayPlaylistIndex(int index) = 0;
+    virtual bool PlayNext() = 0;
+    virtual bool PlayPrevious() = 0;
+    virtual const std::vector<std::wstring>& GetPlaylist() const = 0;
+    virtual int GetCurrentPlaylistIndex() const = 0;
 
     virtual PlaybackState GetState() const = 0;
     virtual const std::wstring& GetFilePath() const = 0;

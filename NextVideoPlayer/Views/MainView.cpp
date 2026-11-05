@@ -1,11 +1,136 @@
 #include "Views/MainView.h"
 #include "Resource.h"
+#include <algorithm>
+#include <cmath>
+#include <cwchar>
+#include <filesystem>
 
 namespace
 {
     constexpr int kMaxLoadString = 100;
     constexpr int kDefaultWidth = 1280;
-    constexpr int kDefaultHeight = 720;
+    constexpr int kDefaultHeight = 760;
+    constexpr int kControlBarHeight = 76;
+
+    constexpr wchar_t kSettingsClassName[] = L"NextVideoPlayer_SettingsWnd";
+    constexpr wchar_t kPlaylistClassName[] = L"NextVideoPlayer_PlaylistWnd";
+
+    constexpr int IDC_SET_SEEK_EDIT = 1001;
+    constexpr int IDC_SET_REPEAT_CHK = 1002;
+    constexpr int IDC_SET_TOPMOST_CHK = 1003;
+    constexpr int IDC_SET_SUB_CHK = 1004;
+    constexpr int IDC_SET_OK = 1005;
+    constexpr int IDC_SET_CANCEL = 1006;
+
+    constexpr int IDC_PL_LIST = 2001;
+    constexpr int IDC_PL_PLAY = 2002;
+    constexpr int IDC_PL_ADD = 2003;
+    constexpr int IDC_PL_REMOVE = 2004;
+    constexpr int IDC_PL_CLEAR = 2005;
+
+    struct SettingsDialogContext
+    {
+        AppConfig config{};
+        bool accepted = false;
+        bool done = false;
+        HWND hSeekEdit = nullptr;
+        HWND hRepeatChk = nullptr;
+        HWND hTopMostChk = nullptr;
+        HWND hSubChk = nullptr;
+    };
+
+    LRESULT CALLBACK SettingsWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+    {
+        auto* ctx = reinterpret_cast<SettingsDialogContext*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+        switch (msg)
+        {
+        case WM_NCCREATE:
+        {
+            auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+            ctx = static_cast<SettingsDialogContext*>(cs->lpCreateParams);
+            SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(ctx));
+            break;
+        }
+        case WM_CREATE:
+        {
+            HFONT hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+
+            HWND hLblSeek = CreateWindowExW(0, L"STATIC", L"좌/우 방향키 이동 시간 (초):",
+                WS_CHILD | WS_VISIBLE, 20, 22, 180, 20, hWnd, nullptr, nullptr, nullptr);
+            SendMessageW(hLblSeek, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+            std::wstring seekStr = std::to_wstring(ctx->config.seekStepSeconds);
+            ctx->hSeekEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", seekStr.c_str(),
+                WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_AUTOHSCROLL, 205, 19, 80, 24,
+                hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_SEEK_EDIT)), nullptr, nullptr);
+            SendMessageW(ctx->hSeekEdit, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+            ctx->hRepeatChk = CreateWindowExW(0, L"BUTTON", L"반복 재생 사용 (Repeat)",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 20, 58, 260, 22,
+                hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_REPEAT_CHK)), nullptr, nullptr);
+            SendMessageW(ctx->hRepeatChk, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+            SendMessageW(ctx->hRepeatChk, BM_SETCHECK, ctx->config.repeatEnabled ? BST_CHECKED : BST_UNCHECKED, 0);
+
+            ctx->hTopMostChk = CreateWindowExW(0, L"BUTTON", L"창 항상 위 고정 (Always on Top)",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 20, 88, 260, 22,
+                hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_TOPMOST_CHK)), nullptr, nullptr);
+            SendMessageW(ctx->hTopMostChk, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+            SendMessageW(ctx->hTopMostChk, BM_SETCHECK, ctx->config.topMost ? BST_CHECKED : BST_UNCHECKED, 0);
+
+            ctx->hSubChk = CreateWindowExW(0, L"BUTTON", L"자막 표시 (Subtitle Visible)",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 20, 118, 260, 22,
+                hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_SUB_CHK)), nullptr, nullptr);
+            SendMessageW(ctx->hSubChk, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+            SendMessageW(ctx->hSubChk, BM_SETCHECK, ctx->config.subtitleVisible ? BST_CHECKED : BST_UNCHECKED, 0);
+
+            HWND hBtnOk = CreateWindowExW(0, L"BUTTON", L"저장",
+                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 110, 160, 80, 28,
+                hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_OK)), nullptr, nullptr);
+            SendMessageW(hBtnOk, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+            HWND hBtnCancel = CreateWindowExW(0, L"BUTTON", L"취소",
+                WS_CHILD | WS_VISIBLE, 205, 160, 80, 28,
+                hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_CANCEL)), nullptr, nullptr);
+            SendMessageW(hBtnCancel, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+            return 0;
+        }
+        case WM_COMMAND:
+        {
+            int id = LOWORD(wParam);
+            if (id == IDC_SET_OK)
+            {
+                WCHAR buf[32]{};
+                GetWindowTextW(ctx->hSeekEdit, buf, 32);
+                int step = _wtoi(buf);
+                ctx->config.seekStepSeconds = std::clamp(step > 0 ? step : 5, 1, 600);
+                ctx->config.repeatEnabled = (SendMessageW(ctx->hRepeatChk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                ctx->config.topMost = (SendMessageW(ctx->hTopMostChk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                ctx->config.subtitleVisible = (SendMessageW(ctx->hSubChk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                ctx->accepted = true;
+                ctx->done = true;
+                DestroyWindow(hWnd);
+                return 0;
+            }
+            if (id == IDC_SET_CANCEL)
+            {
+                ctx->accepted = false;
+                ctx->done = true;
+                DestroyWindow(hWnd);
+                return 0;
+            }
+            break;
+        }
+        case WM_CLOSE:
+            if (ctx)
+            {
+                ctx->accepted = false;
+                ctx->done = true;
+            }
+            DestroyWindow(hWnd);
+            return 0;
+        }
+        return DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
 }
 
 bool MainView::Initialize(HINSTANCE hInstance)
@@ -26,6 +151,7 @@ bool MainView::Initialize(HINSTANCE hInstance)
     m_windowClass = classBuffer;
 
     RegisterWindowClass(hInstance);
+    RegisterHelperClasses(hInstance);
 
     m_hWnd = CreateWindowExW(
         WS_EX_ACCEPTFILES,
@@ -46,8 +172,12 @@ bool MainView::Initialize(HINSTANCE hInstance)
         return false;
     }
 
+    m_hMenu = GetMenu(m_hWnd);
+    m_lastMouseActiveTick = GetTickCount64();
+
     RECT clientRect{};
     GetClientRect(m_hWnd, &clientRect);
+    int videoHeight = std::max(0L, clientRect.bottom - clientRect.top - kControlBarHeight);
 
     m_videoHwnd = CreateWindowExW(
         0,
@@ -57,7 +187,7 @@ bool MainView::Initialize(HINSTANCE hInstance)
         0,
         0,
         clientRect.right - clientRect.left,
-        clientRect.bottom - clientRect.top,
+        videoHeight,
         m_hWnd,
         nullptr,
         hInstance,
@@ -93,16 +223,18 @@ HWND MainView::GetVideoHwnd() const
 
 void MainView::SetVideoVisible(bool visible)
 {
+    if (m_isVideoVisible == visible)
+    {
+        return;
+    }
+
     m_isVideoVisible = visible;
     if (m_videoHwnd)
     {
         ShowWindow(m_videoHwnd, visible ? SW_SHOW : SW_HIDE);
     }
-
-    if (!visible)
-    {
-        Render();
-    }
+    UpdateLayout();
+    Render();
 }
 
 void MainView::SetWindowTitle(const std::wstring& title)
@@ -116,20 +248,172 @@ void MainView::SetWindowTitle(const std::wstring& title)
 void MainView::SetStatusText(const std::wstring& statusText)
 {
     m_statusText = statusText;
-    if (!m_isVideoVisible)
+    Render();
+}
+
+void MainView::UpdateControlBar(const ControlBarState& state)
+{
+    m_barState = state;
+
+    if (m_hMenu)
     {
-        Render();
+        CheckMenuItem(m_hMenu, IDM_REPEAT_TOGGLE, MF_BYCOMMAND | (state.repeatEnabled ? MF_CHECKED : MF_UNCHECKED));
+        CheckMenuItem(m_hMenu, IDM_SUB_TOGGLE, MF_BYCOMMAND | (state.subtitleVisible ? MF_CHECKED : MF_UNCHECKED));
+        CheckMenuItem(m_hMenu, IDM_VIEW_TOPMOST, MF_BYCOMMAND | (state.topMost ? MF_CHECKED : MF_UNCHECKED));
+    }
+
+    Render();
+}
+
+void MainView::UpdatePlaylistView(const std::vector<std::wstring>& items, int currentIndex)
+{
+    m_cachedPlaylist = items;
+    m_cachedPlaylistIndex = currentIndex;
+
+    if (!m_playlistListBox || !IsWindow(m_playlistListBox))
+    {
+        return;
+    }
+
+    SendMessageW(m_playlistListBox, LB_RESETCONTENT, 0, 0);
+    for (size_t i = 0; i < items.size(); ++i)
+    {
+        std::filesystem::path p(items[i]);
+        std::wstring entry = std::to_wstring(i + 1) + L". " + p.filename().wstring();
+        if (static_cast<int>(i) == currentIndex)
+        {
+            entry = L"▶ " + entry;
+        }
+        SendMessageW(m_playlistListBox, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.c_str()));
+    }
+
+    if (currentIndex >= 0 && currentIndex < static_cast<int>(items.size()))
+    {
+        SendMessageW(m_playlistListBox, LB_SETCURSEL, currentIndex, 0);
     }
 }
 
-void MainView::SetRepeatChecked(bool checked)
+void MainView::SetTopMost(bool topMost)
 {
     if (m_hWnd)
     {
-        HMENU hMenu = GetMenu(m_hWnd);
-        if (hMenu)
+        SetWindowPos(
+            m_hWnd,
+            topMost ? HWND_TOPMOST : HWND_NOTOPMOST,
+            0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+}
+
+void MainView::ToggleFullscreen()
+{
+    if (!m_hWnd)
+    {
+        return;
+    }
+
+    if (!m_isFullscreen)
+    {
+        m_savedStyle = GetWindowLongPtrW(m_hWnd, GWL_STYLE);
+        m_savedExStyle = GetWindowLongPtrW(m_hWnd, GWL_EXSTYLE);
+        GetWindowPlacement(m_hWnd, &m_savedPlacement);
+
+        SetMenu(m_hWnd, nullptr);
+        SetWindowLongPtrW(m_hWnd, GWL_STYLE, (m_savedStyle & ~WS_OVERLAPPEDWINDOW) | WS_POPUP | WS_CLIPCHILDREN);
+
+        HMONITOR hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi{ sizeof(MONITORINFO) };
+        GetMonitorInfoW(hMonitor, &mi);
+
+        m_isFullscreen = true;
+        m_lastMouseActiveTick = GetTickCount64();
+
+        SetWindowPos(
+            m_hWnd,
+            HWND_TOP,
+            mi.rcMonitor.left,
+            mi.rcMonitor.top,
+            mi.rcMonitor.right - mi.rcMonitor.left,
+            mi.rcMonitor.bottom - mi.rcMonitor.top,
+            SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+    else
+    {
+        ExitFullscreen();
+    }
+}
+
+void MainView::ExitFullscreen()
+{
+    if (!m_hWnd || !m_isFullscreen)
+    {
+        return;
+    }
+
+    m_isFullscreen = false;
+    m_isControlBarVisible = true;
+
+    SetMenu(m_hWnd, m_hMenu);
+    SetWindowLongPtrW(m_hWnd, GWL_STYLE, m_savedStyle);
+    SetWindowLongPtrW(m_hWnd, GWL_EXSTYLE, m_savedExStyle);
+    SetWindowPlacement(m_hWnd, &m_savedPlacement);
+    SetWindowPos(m_hWnd, nullptr, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    UpdateLayout();
+    Render();
+}
+
+bool MainView::IsFullscreen() const
+{
+    return m_isFullscreen;
+}
+
+void MainView::UpdateFullscreenAutoHide()
+{
+    if (!m_hWnd)
+    {
+        return;
+    }
+
+    if (!m_isFullscreen)
+    {
+        if (!m_isControlBarVisible)
         {
-            CheckMenuItem(hMenu, IDM_REPEAT_TOGGLE, MF_BYCOMMAND | (checked ? MF_CHECKED : MF_UNCHECKED));
+            SetControlBarVisible(true);
+        }
+        return;
+    }
+
+    POINT cursorPt{};
+    if (!GetCursorPos(&cursorPt))
+    {
+        return;
+    }
+
+    ScreenToClient(m_hWnd, &cursorPt);
+
+    RECT clientRect{};
+    GetClientRect(m_hWnd, &clientRect);
+    int clientHeight = clientRect.bottom - clientRect.top;
+
+    bool nearBottom = (cursorPt.y >= clientHeight - kControlBarHeight - 24);
+    bool moved = (cursorPt.x != m_lastMousePt.x || cursorPt.y != m_lastMousePt.y);
+    m_lastMousePt = cursorPt;
+
+    if (nearBottom || moved || m_isDraggingSeek || m_isDraggingVolume)
+    {
+        m_lastMouseActiveTick = GetTickCount64();
+        if (nearBottom && !m_isControlBarVisible)
+        {
+            SetControlBarVisible(true);
+        }
+    }
+
+    if (!nearBottom && !m_isDraggingSeek && !m_isDraggingVolume)
+    {
+        if (GetTickCount64() - m_lastMouseActiveTick > 2000 && m_isControlBarVisible)
+        {
+            SetControlBarVisible(false);
         }
     }
 }
@@ -154,9 +438,137 @@ std::wstring MainView::PromptOpenVideoFile()
     return {};
 }
 
+std::wstring MainView::PromptOpenSubtitleFile()
+{
+    WCHAR fileBuffer[MAX_PATH]{};
+
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = m_hWnd;
+    ofn.lpstrFilter = L"자막 파일 (*.smi;*.srt;*.ass;*.ssa;*.vtt;*.sub)\0*.smi;*.srt;*.ass;*.ssa;*.vtt;*.sub\0모든 파일 (*.*)\0*.*\0";
+    ofn.lpstrFile = fileBuffer;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+
+    if (GetOpenFileNameW(&ofn))
+    {
+        return fileBuffer;
+    }
+
+    return {};
+}
+
+std::wstring MainView::PromptSaveScreenshotFile()
+{
+    WCHAR fileBuffer[MAX_PATH] = L"capture.png";
+
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = m_hWnd;
+    ofn.lpstrFilter = L"PNG 이미지 (*.png)\0*.png\0JPEG 이미지 (*.jpg)\0*.jpg\0";
+    ofn.lpstrFile = fileBuffer;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrDefExt = L"png";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+
+    if (GetSaveFileNameW(&ofn))
+    {
+        return fileBuffer;
+    }
+
+    return {};
+}
+
+bool MainView::ShowSettingsModal(AppConfig& inOutConfig)
+{
+    SettingsDialogContext ctx{};
+    ctx.config = inOutConfig;
+
+    RECT parentRc{};
+    GetWindowRect(m_hWnd, &parentRc);
+    int dlgW = 320;
+    int dlgH = 240;
+    int posX = parentRc.left + ((parentRc.right - parentRc.left) - dlgW) / 2;
+    int posY = parentRc.top + ((parentRc.bottom - parentRc.top) - dlgH) / 2;
+
+    EnableWindow(m_hWnd, FALSE);
+
+    HWND hDlg = CreateWindowExW(
+        WS_EX_DLGMODALFRAME,
+        kSettingsClassName,
+        L"환경설정 (config.ini)",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        posX,
+        posY,
+        dlgW,
+        dlgH,
+        m_hWnd,
+        nullptr,
+        m_hInstance,
+        &ctx);
+
+    MSG msg{};
+    while (!ctx.done && GetMessageW(&msg, nullptr, 0, 0) > 0)
+    {
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE)
+        {
+            DestroyWindow(hDlg);
+            break;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+
+    EnableWindow(m_hWnd, TRUE);
+    SetForegroundWindow(m_hWnd);
+
+    if (ctx.accepted)
+    {
+        inOutConfig = ctx.config;
+        return true;
+    }
+    return false;
+}
+
+void MainView::TogglePlaylistWindow()
+{
+    if (m_playlistHwnd && IsWindow(m_playlistHwnd))
+    {
+        if (IsWindowVisible(m_playlistHwnd))
+        {
+            ShowWindow(m_playlistHwnd, SW_HIDE);
+        }
+        else
+        {
+            ShowWindow(m_playlistHwnd, SW_SHOW);
+            UpdatePlaylistView(m_cachedPlaylist, m_cachedPlaylistIndex);
+        }
+        return;
+    }
+
+    RECT parentRc{};
+    GetWindowRect(m_hWnd, &parentRc);
+
+    m_playlistHwnd = CreateWindowExW(
+        WS_EX_TOOLWINDOW,
+        kPlaylistClassName,
+        L"재생목록 (Playlist)",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        parentRc.right - 360,
+        parentRc.top + 60,
+        340,
+        420,
+        m_hWnd,
+        nullptr,
+        m_hInstance,
+        this);
+
+    UpdatePlaylistView(m_cachedPlaylist, m_cachedPlaylistIndex);
+}
+
 void MainView::Render()
 {
-    if (!m_hWnd || m_isVideoVisible)
+    if (!m_hWnd)
     {
         return;
     }
@@ -167,18 +579,29 @@ void MainView::Render()
     }
 
     m_renderTarget->BeginDraw();
-    m_renderTarget->Clear(D2D1::ColorF(0.05f, 0.05f, 0.05f));
 
-    if (!m_statusText.empty() && m_textFormat && m_textBrush)
+    D2D1_SIZE_F size = m_renderTarget->GetSize();
+    float videoAreaBottom = m_isControlBarVisible ? std::max(0.0f, size.height - static_cast<float>(kControlBarHeight)) : size.height;
+
+    if (!m_isVideoVisible)
     {
-        D2D1_SIZE_F size = m_renderTarget->GetSize();
-        D2D1_RECT_F layoutRect = D2D1::RectF(0.0f, 0.0f, size.width, size.height);
-        m_renderTarget->DrawTextW(
-            m_statusText.c_str(),
-            static_cast<UINT32>(m_statusText.length()),
-            m_textFormat.Get(),
-            layoutRect,
-            m_textBrush.Get());
+        D2D1_RECT_F videoRect = D2D1::RectF(0.0f, 0.0f, size.width, videoAreaBottom);
+        m_renderTarget->FillRectangle(videoRect, m_barBgBrush.Get());
+
+        if (!m_statusText.empty() && m_textFormat && m_textBrush)
+        {
+            m_renderTarget->DrawTextW(
+                m_statusText.c_str(),
+                static_cast<UINT32>(m_statusText.length()),
+                m_textFormat.Get(),
+                videoRect,
+                m_textBrush.Get());
+        }
+    }
+
+    if (m_isControlBarVisible)
+    {
+        DrawControlBar(size);
     }
 
     HRESULT hr = m_renderTarget->EndDraw();
@@ -188,36 +611,193 @@ void MainView::Render()
     }
 }
 
-void MainView::SetOnOpenFileRequested(std::function<void()> handler)
+void MainView::DrawControlBar(const D2D1_SIZE_F& rtSize)
 {
-    m_onOpenFileRequested = std::move(handler);
+    float barTop = std::max(0.0f, rtSize.height - static_cast<float>(kControlBarHeight));
+    D2D1_RECT_F barRect = D2D1::RectF(0.0f, barTop, rtSize.width, rtSize.height);
+    m_barBgBrush->SetColor(D2D1::ColorF(0.10f, 0.10f, 0.12f));
+    m_renderTarget->FillRectangle(barRect, m_barBgBrush.Get());
+
+    m_seekBarRect = D2D1::RectF(14.0f, barTop + 10.0f, std::max(30.0f, rtSize.width - 14.0f), barTop + 22.0f);
+    D2D1_RECT_F trackLine = D2D1::RectF(m_seekBarRect.left, barTop + 14.0f, m_seekBarRect.right, barTop + 18.0f);
+    m_renderTarget->FillRectangle(trackLine, m_trackBrush.Get());
+
+    float seekWidth = m_seekBarRect.right - m_seekBarRect.left;
+    float progressRatio = 0.0f;
+    if (m_barState.duration > 0.0)
+    {
+        progressRatio = static_cast<float>(std::clamp(m_barState.position / m_barState.duration, 0.0, 1.0));
+    }
+
+    float filledX = m_seekBarRect.left + seekWidth * progressRatio;
+    D2D1_RECT_F filledLine = D2D1::RectF(m_seekBarRect.left, barTop + 14.0f, filledX, barTop + 18.0f);
+    m_renderTarget->FillRectangle(filledLine, m_accentBrush.Get());
+
+    if (m_barState.duration > 0.0)
+    {
+        if (m_barState.abLoopA >= 0.0)
+        {
+            float ax = m_seekBarRect.left + seekWidth * static_cast<float>(std::clamp(m_barState.abLoopA / m_barState.duration, 0.0, 1.0));
+            m_renderTarget->FillRectangle(D2D1::RectF(ax - 1.5f, barTop + 8.0f, ax + 1.5f, barTop + 24.0f), m_abMarkerBrush.Get());
+        }
+        if (m_barState.abLoopB >= 0.0)
+        {
+            float bx = m_seekBarRect.left + seekWidth * static_cast<float>(std::clamp(m_barState.abLoopB / m_barState.duration, 0.0, 1.0));
+            m_renderTarget->FillRectangle(D2D1::RectF(bx - 1.5f, barTop + 8.0f, bx + 1.5f, barTop + 24.0f), m_abMarkerBrush.Get());
+        }
+    }
+
+    D2D1_ELLIPSE thumb = D2D1::Ellipse(D2D1::Point2F(filledX, barTop + 16.0f), 6.0f, 6.0f);
+    m_renderTarget->FillEllipse(thumb, m_textBrush.Get());
+
+    float rowTop = barTop + 34.0f;
+    float rowBottom = barTop + 66.0f;
+    float curX = 14.0f;
+
+    m_btnPlayPause = D2D1::RectF(curX, rowTop, curX + 54.0f, rowBottom);
+    DrawButton(m_btnPlayPause, m_barState.playbackState == PlaybackState::Playing ? L"일시정지" : L"재생",
+        m_barState.playbackState == PlaybackState::Playing);
+    curX += 60.0f;
+
+    m_btnStop = D2D1::RectF(curX, rowTop, curX + 44.0f, rowBottom);
+    DrawButton(m_btnStop, L"정지", false);
+    curX += 50.0f;
+
+    m_btnPrev = D2D1::RectF(curX, rowTop, curX + 40.0f, rowBottom);
+    DrawButton(m_btnPrev, L"이전", false);
+    curX += 46.0f;
+
+    m_btnNext = D2D1::RectF(curX, rowTop, curX + 40.0f, rowBottom);
+    DrawButton(m_btnNext, L"다음", false);
+    curX += 50.0f;
+
+    std::wstring timeStr = FormatTime(m_barState.position) + L" / " + FormatTime(m_barState.duration);
+    if (m_barState.abLoopA >= 0.0 || m_barState.abLoopB >= 0.0)
+    {
+        timeStr += L" [A-B]";
+    }
+
+    D2D1_RECT_F timeRect = D2D1::RectF(curX, rowTop, curX + 210.0f, rowBottom);
+    m_renderTarget->DrawTextW(
+        timeStr.c_str(),
+        static_cast<UINT32>(timeStr.length()),
+        m_uiTextFormat.Get(),
+        timeRect,
+        m_textBrush.Get());
+
+    float rightX = rtSize.width - 14.0f;
+
+    m_btnSettings = D2D1::RectF(rightX - 48.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnSettings, L"설정", false);
+    rightX -= 54.0f;
+
+    m_btnPlaylist = D2D1::RectF(rightX - 48.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnPlaylist, L"목록", m_playlistHwnd && IsWindowVisible(m_playlistHwnd));
+    rightX -= 54.0f;
+
+    m_btnSub = D2D1::RectF(rightX - 66.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnSub, m_barState.subtitleVisible ? L"자막 ON" : L"자막 OFF", m_barState.subtitleVisible);
+    rightX -= 72.0f;
+
+    m_btnRepeat = D2D1::RectF(rightX - 68.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnRepeat, m_barState.repeatEnabled ? L"반복 ON" : L"반복 OFF", m_barState.repeatEnabled);
+    rightX -= 76.0f;
+
+    m_btnSpeedPlus = D2D1::RectF(rightX - 28.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnSpeedPlus, L"+", false);
+    rightX -= 32.0f;
+
+    WCHAR speedBuf[32]{};
+    swprintf_s(speedBuf, L"%.1fx", m_barState.speed);
+    m_btnSpeedReset = D2D1::RectF(rightX - 48.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnSpeedReset, speedBuf, std::abs(m_barState.speed - 1.0) > 0.04);
+    rightX -= 52.0f;
+
+    m_btnSpeedMinus = D2D1::RectF(rightX - 28.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnSpeedMinus, L"-", false);
+    rightX -= 38.0f;
+
+    m_volSliderRect = D2D1::RectF(rightX - 80.0f, rowTop + 10.0f, rightX, rowBottom - 10.0f);
+    D2D1_RECT_F volTrack = D2D1::RectF(m_volSliderRect.left, rowTop + 14.0f, m_volSliderRect.right, rowTop + 18.0f);
+    m_renderTarget->FillRectangle(volTrack, m_trackBrush.Get());
+
+    float volRatio = m_barState.muted ? 0.0f : static_cast<float>(std::clamp(m_barState.volume, 0, 100)) / 100.0f;
+    float volFillX = m_volSliderRect.left + (m_volSliderRect.right - m_volSliderRect.left) * volRatio;
+    m_renderTarget->FillRectangle(D2D1::RectF(m_volSliderRect.left, rowTop + 14.0f, volFillX, rowTop + 18.0f), m_accentBrush.Get());
+    rightX -= 86.0f;
+
+    std::wstring volLabel = m_barState.muted ? L"음소거" : (std::to_wstring(m_barState.volume) + L"%");
+    m_btnMute = D2D1::RectF(rightX - 54.0f, rowTop, rightX, rowBottom);
+    DrawButton(m_btnMute, volLabel, m_barState.muted);
 }
 
-void MainView::SetOnFileDropped(std::function<void(const std::wstring&)> handler)
+void MainView::DrawButton(const D2D1_RECT_F& rect, const std::wstring& label, bool active)
 {
-    m_onFileDropped = std::move(handler);
+    D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(rect, 4.0f, 4.0f);
+    m_renderTarget->FillRoundedRectangle(rounded, active ? m_accentBrush.Get() : m_btnBrush.Get());
+    m_renderTarget->DrawTextW(
+        label.c_str(),
+        static_cast<UINT32>(label.length()),
+        m_uiTextFormat.Get(),
+        rect,
+        m_textBrush.Get());
 }
 
-void MainView::SetOnPlayPauseRequested(std::function<void()> handler)
+std::wstring MainView::FormatTime(double seconds)
 {
-    m_onPlayPauseRequested = std::move(handler);
+    if (seconds < 0.0 || std::isnan(seconds))
+    {
+        seconds = 0.0;
+    }
+
+    int totalSec = static_cast<int>(seconds);
+    int hrs = totalSec / 3600;
+    int mins = (totalSec % 3600) / 60;
+    int secs = totalSec % 60;
+
+    WCHAR buf[32]{};
+    swprintf_s(buf, L"%02d:%02d:%02d", hrs, mins, secs);
+    return buf;
 }
 
-void MainView::SetOnStopRequested(std::function<void()> handler)
+bool MainView::PtInRectF(const D2D1_RECT_F& rect, float x, float y)
 {
-    m_onStopRequested = std::move(handler);
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
-void MainView::SetOnRepeatToggled(std::function<void()> handler)
-{
-    m_onRepeatToggled = std::move(handler);
-}
+void MainView::SetOnOpenFileRequested(std::function<void()> handler) { m_onOpenFileRequested = std::move(handler); }
+void MainView::SetOnOpenSubtitleRequested(std::function<void()> handler) { m_onOpenSubtitleRequested = std::move(handler); }
+void MainView::SetOnScreenshotRequested(std::function<void()> handler) { m_onScreenshotRequested = std::move(handler); }
+void MainView::SetOnFilesDropped(std::function<void(const std::vector<std::wstring>&)> handler) { m_onFilesDropped = std::move(handler); }
+void MainView::SetOnPlayPauseRequested(std::function<void()> handler) { m_onPlayPauseRequested = std::move(handler); }
+void MainView::SetOnStopRequested(std::function<void()> handler) { m_onStopRequested = std::move(handler); }
+void MainView::SetOnPrevRequested(std::function<void()> handler) { m_onPrevRequested = std::move(handler); }
+void MainView::SetOnNextRequested(std::function<void()> handler) { m_onNextRequested = std::move(handler); }
+void MainView::SetOnSeekAbsolute(std::function<void(double)> handler) { m_onSeekAbsolute = std::move(handler); }
+void MainView::SetOnSeekDirection(std::function<void(int)> handler) { m_onSeekDirection = std::move(handler); }
+void MainView::SetOnVolumeChanged(std::function<void(int)> handler) { m_onVolumeChanged = std::move(handler); }
+void MainView::SetOnVolumeStep(std::function<void(int)> handler) { m_onVolumeStep = std::move(handler); }
+void MainView::SetOnMuteToggled(std::function<void()> handler) { m_onMuteToggled = std::move(handler); }
+void MainView::SetOnSpeedStep(std::function<void(double)> handler) { m_onSpeedStep = std::move(handler); }
+void MainView::SetOnSpeedReset(std::function<void()> handler) { m_onSpeedReset = std::move(handler); }
+void MainView::SetOnRepeatToggled(std::function<void()> handler) { m_onRepeatToggled = std::move(handler); }
+void MainView::SetOnABLoopAction(std::function<void(int)> handler) { m_onABLoopAction = std::move(handler); }
+void MainView::SetOnSubtitleToggle(std::function<void()> handler) { m_onSubtitleToggle = std::move(handler); }
+void MainView::SetOnSubtitleDelayStep(std::function<void(double)> handler) { m_onSubtitleDelayStep = std::move(handler); }
+void MainView::SetOnSubtitleScaleStep(std::function<void(double)> handler) { m_onSubtitleScaleStep = std::move(handler); }
+void MainView::SetOnSubtitlePosStep(std::function<void(int)> handler) { m_onSubtitlePosStep = std::move(handler); }
+void MainView::SetOnTopMostToggled(std::function<void()> handler) { m_onTopMostToggled = std::move(handler); }
+void MainView::SetOnSettingsRequested(std::function<void()> handler) { m_onSettingsRequested = std::move(handler); }
+void MainView::SetOnPlaylistPlayIndex(std::function<void(int)> handler) { m_onPlaylistPlayIndex = std::move(handler); }
+void MainView::SetOnPlaylistAddFiles(std::function<void()> handler) { m_onPlaylistAddFiles = std::move(handler); }
+void MainView::SetOnPlaylistRemoveIndex(std::function<void(int)> handler) { m_onPlaylistRemoveIndex = std::move(handler); }
+void MainView::SetOnPlaylistClear(std::function<void()> handler) { m_onPlaylistClear = std::move(handler); }
 
 ATOM MainView::RegisterWindowClass(HINSTANCE hInstance) const
 {
     WNDCLASSEXW wcex{};
     wcex.cbSize = sizeof(WNDCLASSEXW);
-    wcex.style = CS_HREDRAW | CS_VREDRAW;
+    wcex.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
     wcex.lpfnWndProc = MainView::WindowProc;
     wcex.hInstance = hInstance;
     wcex.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_NEXTVIDEOPLAYER));
@@ -228,6 +808,27 @@ ATOM MainView::RegisterWindowClass(HINSTANCE hInstance) const
     wcex.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_SMALL));
 
     return RegisterClassExW(&wcex);
+}
+
+void MainView::RegisterHelperClasses(HINSTANCE hInstance) const
+{
+    WNDCLASSEXW settingsWc{};
+    settingsWc.cbSize = sizeof(WNDCLASSEXW);
+    settingsWc.lpfnWndProc = SettingsWndProc;
+    settingsWc.hInstance = hInstance;
+    settingsWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    settingsWc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+    settingsWc.lpszClassName = kSettingsClassName;
+    RegisterClassExW(&settingsWc);
+
+    WNDCLASSEXW playlistWc{};
+    playlistWc.cbSize = sizeof(WNDCLASSEXW);
+    playlistWc.lpfnWndProc = MainView::PlaylistWndProc;
+    playlistWc.hInstance = hInstance;
+    playlistWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    playlistWc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+    playlistWc.lpszClassName = kPlaylistClassName;
+    RegisterClassExW(&playlistWc);
 }
 
 HRESULT MainView::CreateDeviceIndependentResources()
@@ -263,6 +864,23 @@ HRESULT MainView::CreateDeviceIndependentResources()
 
     m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    hr = m_dwriteFactory->CreateTextFormat(
+        L"Malgun Gothic",
+        nullptr,
+        DWRITE_FONT_WEIGHT_SEMI_BOLD,
+        DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL,
+        12.5f,
+        L"ko-kr",
+        m_uiTextFormat.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    m_uiTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    m_uiTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     return S_OK;
 }
 
@@ -286,15 +904,59 @@ HRESULT MainView::CreateDeviceResources()
         return hr;
     }
 
-    return m_renderTarget->CreateSolidColorBrush(
-        D2D1::ColorF(0.88f, 0.88f, 0.88f),
-        m_textBrush.GetAddressOf());
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.92f, 0.92f, 0.92f), m_textBrush.GetAddressOf());
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.08f, 0.08f, 0.10f), m_barBgBrush.GetAddressOf());
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.22f, 0.22f, 0.26f), m_btnBrush.GetAddressOf());
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.18f, 0.52f, 0.92f), m_accentBrush.GetAddressOf());
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.30f, 0.30f, 0.35f), m_trackBrush.GetAddressOf());
+    return m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 0.75f, 0.15f), m_abMarkerBrush.GetAddressOf());
 }
 
 void MainView::DiscardDeviceResources()
 {
+    m_abMarkerBrush.Reset();
+    m_trackBrush.Reset();
+    m_accentBrush.Reset();
+    m_btnBrush.Reset();
+    m_barBgBrush.Reset();
     m_textBrush.Reset();
     m_renderTarget.Reset();
+}
+
+void MainView::UpdateLayout()
+{
+    if (!m_hWnd)
+    {
+        return;
+    }
+
+    RECT rc{};
+    GetClientRect(m_hWnd, &rc);
+    int w = rc.right - rc.left;
+    int h = rc.bottom - rc.top;
+    int videoH = m_isControlBarVisible ? std::max(0, h - kControlBarHeight) : h;
+
+    if (m_videoHwnd)
+    {
+        MoveWindow(m_videoHwnd, 0, 0, w, videoH, TRUE);
+    }
+
+    if (m_renderTarget)
+    {
+        m_renderTarget->Resize(D2D1::SizeU(w, h));
+    }
+}
+
+void MainView::SetControlBarVisible(bool visible)
+{
+    if (m_isControlBarVisible == visible)
+    {
+        return;
+    }
+
+    m_isControlBarVisible = visible;
+    UpdateLayout();
+    Render();
 }
 
 LRESULT CALLBACK MainView::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -321,6 +983,107 @@ LRESULT CALLBACK MainView::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
     return DefWindowProcW(hWnd, message, wParam, lParam);
 }
 
+LRESULT CALLBACK MainView::PlaylistWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    MainView* view = nullptr;
+
+    if (message == WM_NCCREATE)
+    {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        view = static_cast<MainView*>(cs->lpCreateParams);
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(view));
+    }
+    else
+    {
+        view = reinterpret_cast<MainView*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+    }
+
+    if (view)
+    {
+        return view->HandlePlaylistMessage(hWnd, message, wParam, lParam);
+    }
+
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
+LRESULT MainView::HandlePlaylistMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_CREATE:
+    {
+        HFONT hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        m_playlistListBox = CreateWindowExW(
+            WS_EX_CLIENTEDGE,
+            L"LISTBOX",
+            nullptr,
+            WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_HASSTRINGS,
+            10, 10, 304, 320,
+            hWnd,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_LIST)),
+            m_hInstance,
+            nullptr);
+        SendMessageW(m_playlistListBox, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+        HWND hPlay = CreateWindowExW(0, L"BUTTON", L"선택 재생", WS_CHILD | WS_VISIBLE,
+            10, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_PLAY)), m_hInstance, nullptr);
+        SendMessageW(hPlay, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+        HWND hAdd = CreateWindowExW(0, L"BUTTON", L"파일 추가", WS_CHILD | WS_VISIBLE,
+            87, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_ADD)), m_hInstance, nullptr);
+        SendMessageW(hAdd, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+        HWND hRemove = CreateWindowExW(0, L"BUTTON", L"선택 삭제", WS_CHILD | WS_VISIBLE,
+            164, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_REMOVE)), m_hInstance, nullptr);
+        SendMessageW(hRemove, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+        HWND hClear = CreateWindowExW(0, L"BUTTON", L"비우기", WS_CHILD | WS_VISIBLE,
+            241, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_CLEAR)), m_hInstance, nullptr);
+        SendMessageW(hClear, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+        return 0;
+    }
+    case WM_COMMAND:
+    {
+        int id = LOWORD(wParam);
+        int code = HIWORD(wParam);
+        if ((id == IDC_PL_LIST && code == LBN_DBLCLK) || id == IDC_PL_PLAY)
+        {
+            int sel = static_cast<int>(SendMessageW(m_playlistListBox, LB_GETCURSEL, 0, 0));
+            if (sel != LB_ERR && m_onPlaylistPlayIndex)
+            {
+                m_onPlaylistPlayIndex(sel);
+            }
+            return 0;
+        }
+        if (id == IDC_PL_ADD && m_onPlaylistAddFiles)
+        {
+            m_onPlaylistAddFiles();
+            return 0;
+        }
+        if (id == IDC_PL_REMOVE && m_onPlaylistRemoveIndex)
+        {
+            int sel = static_cast<int>(SendMessageW(m_playlistListBox, LB_GETCURSEL, 0, 0));
+            if (sel != LB_ERR)
+            {
+                m_onPlaylistRemoveIndex(sel);
+            }
+            return 0;
+        }
+        if (id == IDC_PL_CLEAR && m_onPlaylistClear)
+        {
+            m_onPlaylistClear();
+            return 0;
+        }
+        break;
+    }
+    case WM_CLOSE:
+        ShowWindow(hWnd, SW_HIDE);
+        Render();
+        return 0;
+    }
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
 LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
@@ -334,12 +1097,43 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_KEYDOWN:
-        if (wParam == VK_SPACE && m_onPlayPauseRequested)
+        OnKeyDown(wParam);
+        return 0;
+
+    case WM_MOUSEWHEEL:
+    {
+        int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+        if (m_onVolumeStep)
         {
-            m_onPlayPauseRequested();
-            return 0;
+            m_onVolumeStep(delta > 0 ? 5 : -5);
         }
-        break;
+        return 0;
+    }
+
+    case WM_LBUTTONDOWN:
+        OnLButtonDown(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+        return 0;
+
+    case WM_MOUSEMOVE:
+        OnMouseMove(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+        return 0;
+
+    case WM_LBUTTONUP:
+        OnLButtonUp(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+        return 0;
+
+    case WM_LBUTTONDBLCLK:
+    {
+        float y = static_cast<float>(GET_Y_LPARAM(lParam));
+        RECT rc{};
+        GetClientRect(m_hWnd, &rc);
+        float videoBottom = m_isControlBarVisible ? static_cast<float>(rc.bottom - kControlBarHeight) : static_cast<float>(rc.bottom);
+        if (y < videoBottom)
+        {
+            ToggleFullscreen();
+        }
+        return 0;
+    }
 
     case WM_SIZE:
         OnResize(LOWORD(lParam), HIWORD(lParam));
@@ -366,17 +1160,10 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     return DefWindowProcW(m_hWnd, message, wParam, lParam);
 }
 
-void MainView::OnResize(UINT width, UINT height)
+void MainView::OnResize(UINT, UINT)
 {
-    if (m_videoHwnd)
-    {
-        MoveWindow(m_videoHwnd, 0, 0, static_cast<int>(width), static_cast<int>(height), TRUE);
-    }
-
-    if (m_renderTarget)
-    {
-        m_renderTarget->Resize(D2D1::SizeU(width, height));
-    }
+    UpdateLayout();
+    Render();
 }
 
 void MainView::OnCommand(int commandId)
@@ -384,33 +1171,71 @@ void MainView::OnCommand(int commandId)
     switch (commandId)
     {
     case IDM_FILE_OPEN:
-        if (m_onOpenFileRequested)
-        {
-            m_onOpenFileRequested();
-        }
+        if (m_onOpenFileRequested) m_onOpenFileRequested();
         break;
-
+    case IDM_SUBTITLE_OPEN:
+        if (m_onOpenSubtitleRequested) m_onOpenSubtitleRequested();
+        break;
+    case IDM_SCREENSHOT:
+        if (m_onScreenshotRequested) m_onScreenshotRequested();
+        break;
     case IDM_PLAY_PAUSE:
-        if (m_onPlayPauseRequested)
-        {
-            m_onPlayPauseRequested();
-        }
+        if (m_onPlayPauseRequested) m_onPlayPauseRequested();
         break;
-
     case IDM_STOP:
-        if (m_onStopRequested)
-        {
-            m_onStopRequested();
-        }
+        if (m_onStopRequested) m_onStopRequested();
         break;
-
+    case IDM_PREV_FILE:
+        if (m_onPrevRequested) m_onPrevRequested();
+        break;
+    case IDM_NEXT_FILE:
+        if (m_onNextRequested) m_onNextRequested();
+        break;
     case IDM_REPEAT_TOGGLE:
-        if (m_onRepeatToggled)
-        {
-            m_onRepeatToggled();
-        }
+        if (m_onRepeatToggled) m_onRepeatToggled();
         break;
-
+    case IDM_AB_SET_A:
+        if (m_onABLoopAction) m_onABLoopAction(1);
+        break;
+    case IDM_AB_SET_B:
+        if (m_onABLoopAction) m_onABLoopAction(2);
+        break;
+    case IDM_AB_CLEAR:
+        if (m_onABLoopAction) m_onABLoopAction(0);
+        break;
+    case IDM_SUB_TOGGLE:
+        if (m_onSubtitleToggle) m_onSubtitleToggle();
+        break;
+    case IDM_SUB_DELAY_MINUS:
+        if (m_onSubtitleDelayStep) m_onSubtitleDelayStep(-0.5);
+        break;
+    case IDM_SUB_DELAY_PLUS:
+        if (m_onSubtitleDelayStep) m_onSubtitleDelayStep(0.5);
+        break;
+    case IDM_SUB_SCALE_PLUS:
+        if (m_onSubtitleScaleStep) m_onSubtitleScaleStep(0.1);
+        break;
+    case IDM_SUB_SCALE_MINUS:
+        if (m_onSubtitleScaleStep) m_onSubtitleScaleStep(-0.1);
+        break;
+    case IDM_SUB_POS_UP:
+        if (m_onSubtitlePosStep) m_onSubtitlePosStep(-2);
+        break;
+    case IDM_SUB_POS_DOWN:
+        if (m_onSubtitlePosStep) m_onSubtitlePosStep(2);
+        break;
+    case IDM_VIEW_FULLSCREEN:
+        ToggleFullscreen();
+        break;
+    case IDM_VIEW_TOPMOST:
+        if (m_onTopMostToggled) m_onTopMostToggled();
+        break;
+    case IDM_VIEW_PLAYLIST:
+        TogglePlaylistWindow();
+        break;
+    case IDM_VIEW_SETTINGS:
+        if (m_onSettingsRequested) m_onSettingsRequested();
+        break;
     case IDM_EXIT:
         DestroyWindow(m_hWnd);
         break;
@@ -419,10 +1244,147 @@ void MainView::OnCommand(int commandId)
 
 void MainView::OnDropFiles(HDROP hDrop)
 {
-    WCHAR filePath[MAX_PATH]{};
-    if (DragQueryFileW(hDrop, 0, filePath, MAX_PATH) > 0 && m_onFileDropped)
+    UINT count = DragQueryFileW(hDrop, 0xFFFFFFFF, nullptr, 0);
+    std::vector<std::wstring> files;
+    files.reserve(count);
+
+    for (UINT i = 0; i < count; ++i)
     {
-        m_onFileDropped(filePath);
+        WCHAR filePath[MAX_PATH]{};
+        if (DragQueryFileW(hDrop, i, filePath, MAX_PATH) > 0)
+        {
+            files.emplace_back(filePath);
+        }
     }
     DragFinish(hDrop);
+
+    if (!files.empty() && m_onFilesDropped)
+    {
+        m_onFilesDropped(files);
+    }
+}
+
+void MainView::OnKeyDown(WPARAM key)
+{
+    switch (key)
+    {
+    case VK_SPACE:
+        if (m_onPlayPauseRequested) m_onPlayPauseRequested();
+        break;
+    case VK_LEFT:
+        if (m_onSeekDirection) m_onSeekDirection(-1);
+        break;
+    case VK_RIGHT:
+        if (m_onSeekDirection) m_onSeekDirection(1);
+        break;
+    case VK_UP:
+        if (m_onVolumeStep) m_onVolumeStep(5);
+        break;
+    case VK_DOWN:
+        if (m_onVolumeStep) m_onVolumeStep(-5);
+        break;
+    case VK_RETURN:
+        ToggleFullscreen();
+        break;
+    case VK_ESCAPE:
+        if (m_isFullscreen) ExitFullscreen();
+        break;
+    case VK_OEM_4: // '['
+        if (m_onABLoopAction) m_onABLoopAction(1);
+        break;
+    case VK_OEM_6: // ']'
+        if (m_onABLoopAction) m_onABLoopAction(2);
+        break;
+    case VK_OEM_5: // '\'
+        if (m_onABLoopAction) m_onABLoopAction(0);
+        break;
+    }
+}
+
+void MainView::OnLButtonDown(float x, float y)
+{
+    SetFocus(m_hWnd);
+
+    if (!m_isControlBarVisible)
+    {
+        return;
+    }
+
+    if (PtInRectF(m_seekBarRect, x, y))
+    {
+        m_isDraggingSeek = true;
+        SetCapture(m_hWnd);
+        SeekFromMouseX(x);
+        return;
+    }
+
+    if (PtInRectF(m_volSliderRect, x, y))
+    {
+        m_isDraggingVolume = true;
+        SetCapture(m_hWnd);
+        VolumeFromMouseX(x);
+        return;
+    }
+
+    if (PtInRectF(m_btnPlayPause, x, y) && m_onPlayPauseRequested) m_onPlayPauseRequested();
+    else if (PtInRectF(m_btnStop, x, y) && m_onStopRequested) m_onStopRequested();
+    else if (PtInRectF(m_btnPrev, x, y) && m_onPrevRequested) m_onPrevRequested();
+    else if (PtInRectF(m_btnNext, x, y) && m_onNextRequested) m_onNextRequested();
+    else if (PtInRectF(m_btnMute, x, y) && m_onMuteToggled) m_onMuteToggled();
+    else if (PtInRectF(m_btnSpeedMinus, x, y) && m_onSpeedStep) m_onSpeedStep(-0.1);
+    else if (PtInRectF(m_btnSpeedReset, x, y) && m_onSpeedReset) m_onSpeedReset();
+    else if (PtInRectF(m_btnSpeedPlus, x, y) && m_onSpeedStep) m_onSpeedStep(0.1);
+    else if (PtInRectF(m_btnRepeat, x, y) && m_onRepeatToggled) m_onRepeatToggled();
+    else if (PtInRectF(m_btnSub, x, y) && m_onSubtitleToggle) m_onSubtitleToggle();
+    else if (PtInRectF(m_btnPlaylist, x, y)) TogglePlaylistWindow();
+    else if (PtInRectF(m_btnSettings, x, y) && m_onSettingsRequested) m_onSettingsRequested();
+}
+
+void MainView::OnMouseMove(float x, float y)
+{
+    UNREFERENCED_PARAMETER(y);
+
+    if (m_isDraggingSeek)
+    {
+        SeekFromMouseX(x);
+    }
+    else if (m_isDraggingVolume)
+    {
+        VolumeFromMouseX(x);
+    }
+}
+
+void MainView::OnLButtonUp(float, float)
+{
+    if (m_isDraggingSeek || m_isDraggingVolume)
+    {
+        m_isDraggingSeek = false;
+        m_isDraggingVolume = false;
+        ReleaseCapture();
+    }
+}
+
+void MainView::SeekFromMouseX(float x)
+{
+    if (m_barState.duration <= 0.0 || !m_onSeekAbsolute)
+    {
+        return;
+    }
+
+    float width = std::max(1.0f, m_seekBarRect.right - m_seekBarRect.left);
+    float ratio = std::clamp((x - m_seekBarRect.left) / width, 0.0f, 1.0f);
+    m_onSeekAbsolute(static_cast<double>(ratio) * m_barState.duration);
+}
+
+void MainView::VolumeFromMouseX(float x)
+{
+    if (!m_onVolumeChanged)
+    {
+        return;
+    }
+
+    float width = std::max(1.0f, m_volSliderRect.right - m_volSliderRect.left);
+    float ratio = std::clamp((x - m_volSliderRect.left) / width, 0.0f, 1.0f);
+    int volume = static_cast<int>(std::round(ratio * 100.0f));
+    m_onVolumeChanged(volume);
 }

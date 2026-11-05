@@ -71,10 +71,18 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(ProjectDir)</OutDir>
     <TargetName>$(ProjectName)D</TargetName>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(ProjectDir)</OutDir>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(ProjectDir)</OutDir>
     <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(ProjectDir)</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -135,8 +143,7 @@
       <AdditionalLibraryDirectories>$(ProjectDir)ThirdParty\libmpv;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"
-xcopy /Y /D "$(ProjectDir)LICENSE.txt" "$(OutDir)"</Command>
+      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
@@ -163,8 +170,7 @@ xcopy /Y /D "$(ProjectDir)LICENSE.txt" "$(OutDir)"</Command>
       <AdditionalLibraryDirectories>$(ProjectDir)ThirdParty\libmpv;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"
-xcopy /Y /D "$(ProjectDir)LICENSE.txt" "$(OutDir)"</Command>
+      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>

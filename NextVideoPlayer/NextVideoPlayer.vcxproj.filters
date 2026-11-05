@@ -62,6 +62,7 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
+    <None Include="LICENSE.txt" />
     <None Include="Readme.md" />
     <None Include="setup_sdk.bat" />
   </ItemGroup>

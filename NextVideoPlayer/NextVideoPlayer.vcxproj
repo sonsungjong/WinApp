@@ -129,7 +129,8 @@
       <AdditionalLibraryDirectories>$(ProjectDir)ThirdParty\libmpv;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"</Command>
+      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)LICENSE.txt" "$(OutDir)"</Command>
     </PostBuildEvent>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
@@ -156,7 +157,8 @@
       <AdditionalLibraryDirectories>$(ProjectDir)ThirdParty\libmpv;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"</Command>
+      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"
+xcopy /Y /D "$(ProjectDir)LICENSE.txt" "$(OutDir)"</Command>
     </PostBuildEvent>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
@@ -187,6 +189,7 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="LICENSE.txt" />
     <None Include="Readme.md" />
     <None Include="setup_sdk.bat" />
   </ItemGroup>

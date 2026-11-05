@@ -180,21 +180,35 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="Models\AppConfig.h" />
     <ClInclude Include="Models\ConfigService.h" />
+    <ClInclude Include="Models\ControlBarModel.h" />
     <ClInclude Include="Models\IVideoModel.h" />
     <ClInclude Include="Models\VideoModel.h" />
     <ClInclude Include="NextVideoPlayer.h" />
+    <ClInclude Include="Presenters\ControlBarPresenter.h" />
     <ClInclude Include="Presenters\MainPresenter.h" />
+    <ClInclude Include="Presenters\SettingsPresenter.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Views\ControlBarView.h" />
+    <ClInclude Include="Views\FontHelper.h" />
+    <ClInclude Include="Views\IControlBarView.h" />
     <ClInclude Include="Views\IMainView.h" />
+    <ClInclude Include="Views\ISettingsView.h" />
     <ClInclude Include="Views\MainView.h" />
+    <ClInclude Include="Views\SettingsView.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Models\ConfigService.cpp" />
+    <ClCompile Include="Models\ControlBarModel.cpp" />
     <ClCompile Include="Models\VideoModel.cpp" />
     <ClCompile Include="NextVideoPlayer.cpp" />
+    <ClCompile Include="Presenters\ControlBarPresenter.cpp" />
     <ClCompile Include="Presenters\MainPresenter.cpp" />
+    <ClCompile Include="Presenters\SettingsPresenter.cpp" />
+    <ClCompile Include="Views\ControlBarView.cpp" />
+    <ClCompile Include="Views\FontHelper.cpp" />
     <ClCompile Include="Views\MainView.cpp" />
+    <ClCompile Include="Views\SettingsView.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="NextVideoPlayer.rc" />

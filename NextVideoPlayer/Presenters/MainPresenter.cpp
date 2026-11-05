@@ -3,10 +3,17 @@
 #include <cwctype>
 #include <filesystem>
 
-MainPresenter::MainPresenter(IMainView& view, IVideoModel& model, ConfigService& configService)
+MainPresenter::MainPresenter(
+    IMainView& view,
+    IVideoModel& model,
+    ConfigService& configService,
+    ControlBarPresenter& controlBarPresenter,
+    SettingsPresenter& settingsPresenter)
     : m_view(view)
     , m_model(model)
     , m_configService(configService)
+    , m_controlBarPresenter(controlBarPresenter)
+    , m_settingsPresenter(settingsPresenter)
 {
 }
 
@@ -24,8 +31,14 @@ bool MainPresenter::Initialize()
         return false;
     }
 
+    if (!m_controlBarPresenter.Initialize())
+    {
+        return false;
+    }
+
     ApplyConfig();
 
+    // Bind MainView events
     m_view.SetOnOpenFileRequested([this]() { OnOpenFileRequested(); });
     m_view.SetOnOpenSubtitleRequested([this]() { OnOpenSubtitleRequested(); });
     m_view.SetOnScreenshotRequested([this]() { OnScreenshotRequested(); });
@@ -34,13 +47,8 @@ bool MainPresenter::Initialize()
     m_view.SetOnStopRequested([this]() { OnStopRequested(); });
     m_view.SetOnPrevRequested([this]() { OnPrevRequested(); });
     m_view.SetOnNextRequested([this]() { OnNextRequested(); });
-    m_view.SetOnSeekAbsolute([this](double sec) { OnSeekAbsolute(sec); });
     m_view.SetOnSeekDirection([this](int dir) { OnSeekDirection(dir); });
-    m_view.SetOnVolumeChanged([this](int vol) { OnVolumeChanged(vol); });
     m_view.SetOnVolumeStep([this](int delta) { OnVolumeStep(delta); });
-    m_view.SetOnMuteToggled([this]() { OnMuteToggled(); });
-    m_view.SetOnSpeedStep([this](double delta) { OnSpeedStep(delta); });
-    m_view.SetOnSpeedReset([this]() { OnSpeedReset(); });
     m_view.SetOnRepeatToggled([this]() { OnRepeatToggled(); });
     m_view.SetOnABLoopAction([this](int action) { OnABLoopAction(action); });
     m_view.SetOnSubtitleToggle([this]() { OnSubtitleToggle(); });
@@ -53,6 +61,22 @@ bool MainPresenter::Initialize()
     m_view.SetOnPlaylistAddFiles([this]() { OnPlaylistAddFiles(); });
     m_view.SetOnPlaylistRemoveIndex([this](int idx) { OnPlaylistRemoveIndex(idx); });
     m_view.SetOnPlaylistClear([this]() { OnPlaylistClear(); });
+    m_view.SetOnPlaylistVisibilityChanged([this]() { UpdateView(); });
+
+    // Bind ControlBarPresenter events
+    m_controlBarPresenter.SetOnPlayPauseRequested([this]() { OnPlayPauseRequested(); });
+    m_controlBarPresenter.SetOnStopRequested([this]() { OnStopRequested(); });
+    m_controlBarPresenter.SetOnPrevRequested([this]() { OnPrevRequested(); });
+    m_controlBarPresenter.SetOnNextRequested([this]() { OnNextRequested(); });
+    m_controlBarPresenter.SetOnSeekAbsolute([this](double sec) { OnSeekAbsolute(sec); });
+    m_controlBarPresenter.SetOnVolumeChanged([this](int vol) { OnVolumeChanged(vol); });
+    m_controlBarPresenter.SetOnMuteToggled([this]() { OnMuteToggled(); });
+    m_controlBarPresenter.SetOnSpeedStep([this](double delta) { OnSpeedStep(delta); });
+    m_controlBarPresenter.SetOnSpeedReset([this]() { OnSpeedReset(); });
+    m_controlBarPresenter.SetOnRepeatToggled([this]() { OnRepeatToggled(); });
+    m_controlBarPresenter.SetOnSubtitleToggle([this]() { OnSubtitleToggle(); });
+    m_controlBarPresenter.SetOnPlaylistRequested([this]() { m_view.TogglePlaylistWindow(); });
+    m_controlBarPresenter.SetOnSettingsRequested([this]() { OnSettingsRequested(); });
 
     UpdateView();
     return true;
@@ -323,7 +347,7 @@ void MainPresenter::OnSettingsRequested()
     m_config.repeatEnabled = m_model.IsRepeatEnabled();
     m_config.subtitleVisible = m_model.IsSubtitleVisible();
 
-    if (m_view.ShowSettingsModal(m_config))
+    if (m_settingsPresenter.ShowSettingsDialog(m_view.GetInstance(), m_view.GetHwnd(), m_config))
     {
         ApplyConfig();
         SaveConfig();
@@ -384,13 +408,16 @@ void MainPresenter::UpdateView()
     barState.subtitleVisible = m_model.IsSubtitleVisible();
     barState.subtitleDelay = m_model.GetSubtitleDelay();
     barState.topMost = m_config.topMost;
+    barState.playlistOpen = m_view.IsPlaylistVisible();
+
+    m_view.UpdateMenuState(barState.repeatEnabled, barState.subtitleVisible, barState.topMost);
+    m_controlBarPresenter.UpdateState(barState);
 
     if (!m_model.HasMedia())
     {
         m_view.SetVideoVisible(false);
         m_view.SetWindowTitle(L"NextVideoPlayer");
         m_view.SetStatusText(L"동영상 파일을 열거나 창으로 드래그하세요.");
-        m_view.UpdateControlBar(barState);
         return;
     }
 
@@ -417,5 +444,4 @@ void MainPresenter::UpdateView()
     std::wstring repeatLabel = m_model.IsRepeatEnabled() ? L" [반복 ON]" : L"";
     m_view.SetWindowTitle(L"NextVideoPlayer - " + fileName + L" (" + stateLabel + L")" + repeatLabel);
     m_view.SetStatusText(fileName + L" (" + stateLabel + L")" + repeatLabel);
-    m_view.UpdateControlBar(barState);
 }

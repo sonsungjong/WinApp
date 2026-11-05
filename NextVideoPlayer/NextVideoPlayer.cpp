@@ -1,9 +1,14 @@
 #include "framework.h"
 #include "NextVideoPlayer.h"
 #include "Models/ConfigService.h"
+#include "Models/ControlBarModel.h"
 #include "Models/VideoModel.h"
+#include "Presenters/ControlBarPresenter.h"
 #include "Presenters/MainPresenter.h"
+#include "Presenters/SettingsPresenter.h"
+#include "Views/ControlBarView.h"
 #include "Views/MainView.h"
+#include "Views/SettingsView.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -20,24 +25,34 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     int exitCode = 0;
     {
+        // Models
         ConfigService configService;
-        VideoModel model;
-        MainView view;
+        VideoModel videoModel;
+        ControlBarModel controlBarModel;
 
-        if (!view.Initialize(hInstance))
+        // Views
+        ControlBarView controlBarView;
+        SettingsView settingsView;
+        MainView mainView(controlBarView);
+
+        if (!mainView.Initialize(hInstance))
         {
             CoUninitialize();
             return FALSE;
         }
 
-        MainPresenter presenter(view, model, configService);
-        if (!presenter.Initialize())
+        // Presenters
+        ControlBarPresenter controlBarPresenter(controlBarView, controlBarModel);
+        SettingsPresenter settingsPresenter(settingsView, configService);
+        MainPresenter mainPresenter(mainView, videoModel, configService, controlBarPresenter, settingsPresenter);
+
+        if (!mainPresenter.Initialize())
         {
             CoUninitialize();
             return FALSE;
         }
 
-        view.Show(nCmdShow);
+        mainView.Show(nCmdShow);
 
         MSG msg{};
         bool running = true;
@@ -61,9 +76,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                 break;
             }
 
-            if (presenter.IsActiveLoop())
+            if (mainPresenter.IsActiveLoop())
             {
-                presenter.Tick();
+                mainPresenter.Tick();
                 MsgWaitForMultipleObjectsEx(0, nullptr, 33, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             }
             else

@@ -2,12 +2,19 @@
 
 #include "Models/ConfigService.h"
 #include "Models/IVideoModel.h"
+#include "Presenters/ControlBarPresenter.h"
+#include "Presenters/SettingsPresenter.h"
 #include "Views/IMainView.h"
 
 class MainPresenter
 {
 public:
-    MainPresenter(IMainView& view, IVideoModel& model, ConfigService& configService);
+    MainPresenter(
+        IMainView& view,
+        IVideoModel& model,
+        ConfigService& configService,
+        ControlBarPresenter& controlBarPresenter,
+        SettingsPresenter& settingsPresenter);
     ~MainPresenter();
 
     bool Initialize();
@@ -53,5 +60,7 @@ private:
     IMainView& m_view;
     IVideoModel& m_model;
     ConfigService& m_configService;
+    ControlBarPresenter& m_controlBarPresenter;
+    SettingsPresenter& m_settingsPresenter;
     AppConfig m_config{};
 };

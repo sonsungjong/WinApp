@@ -33,6 +33,7 @@ bool VideoModel::Initialize(HWND videoHwnd)
     mpv_set_option(m_mpv, "wid", MPV_FORMAT_INT64, &wid);
     mpv_set_option_string(m_mpv, "vo", "gpu");
     mpv_set_option_string(m_mpv, "gpu-api", "d3d11");
+    mpv_set_option_string(m_mpv, "d3d11-flip", "no");
     mpv_set_option_string(m_mpv, "hwdec", "auto");
     mpv_set_option_string(m_mpv, "keep-open", "no");
     mpv_set_option_string(m_mpv, "loop-file", m_isRepeatEnabled ? "inf" : "no");

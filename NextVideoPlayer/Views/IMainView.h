@@ -4,35 +4,21 @@
 #include "Models/AppConfig.h"
 #include "Models/IVideoModel.h"
 
-struct ControlBarState
-{
-    PlaybackState playbackState = PlaybackState::Stopped;
-    double position = 0.0;
-    double duration = 0.0;
-    int volume = 100;
-    bool muted = false;
-    double speed = 1.0;
-    bool repeatEnabled = false;
-    double abLoopA = -1.0;
-    double abLoopB = -1.0;
-    bool subtitleVisible = true;
-    double subtitleDelay = 0.0;
-    bool topMost = false;
-};
-
 class IMainView
 {
 public:
     virtual ~IMainView() = default;
 
     virtual void Show(int cmdShow) = 0;
+    virtual HINSTANCE GetInstance() const = 0;
     virtual HWND GetHwnd() const = 0;
     virtual HWND GetVideoHwnd() const = 0;
     virtual void SetVideoVisible(bool visible) = 0;
     virtual void SetWindowTitle(const std::wstring& title) = 0;
     virtual void SetStatusText(const std::wstring& statusText) = 0;
-    virtual void UpdateControlBar(const ControlBarState& state) = 0;
+    virtual void UpdateMenuState(bool repeatEnabled, bool subtitleVisible, bool topMost) = 0;
     virtual void UpdatePlaylistView(const std::vector<std::wstring>& items, int currentIndex) = 0;
+    virtual bool IsPlaylistVisible() const = 0;
     virtual void SetTopMost(bool topMost) = 0;
     virtual void ToggleFullscreen() = 0;
     virtual void ExitFullscreen() = 0;
@@ -42,7 +28,6 @@ public:
     virtual std::wstring PromptOpenVideoFile() = 0;
     virtual std::wstring PromptOpenSubtitleFile() = 0;
     virtual std::wstring PromptSaveScreenshotFile() = 0;
-    virtual bool ShowSettingsModal(AppConfig& inOutConfig) = 0;
     virtual void TogglePlaylistWindow() = 0;
     virtual void Render() = 0;
 
@@ -54,13 +39,8 @@ public:
     virtual void SetOnStopRequested(std::function<void()> handler) = 0;
     virtual void SetOnPrevRequested(std::function<void()> handler) = 0;
     virtual void SetOnNextRequested(std::function<void()> handler) = 0;
-    virtual void SetOnSeekAbsolute(std::function<void(double)> handler) = 0;
     virtual void SetOnSeekDirection(std::function<void(int)> handler) = 0;
-    virtual void SetOnVolumeChanged(std::function<void(int)> handler) = 0;
     virtual void SetOnVolumeStep(std::function<void(int)> handler) = 0;
-    virtual void SetOnMuteToggled(std::function<void()> handler) = 0;
-    virtual void SetOnSpeedStep(std::function<void(double)> handler) = 0;
-    virtual void SetOnSpeedReset(std::function<void()> handler) = 0;
     virtual void SetOnRepeatToggled(std::function<void()> handler) = 0;
     virtual void SetOnABLoopAction(std::function<void(int)> handler) = 0;
     virtual void SetOnSubtitleToggle(std::function<void()> handler) = 0;
@@ -73,4 +53,5 @@ public:
     virtual void SetOnPlaylistAddFiles(std::function<void()> handler) = 0;
     virtual void SetOnPlaylistRemoveIndex(std::function<void(int)> handler) = 0;
     virtual void SetOnPlaylistClear(std::function<void()> handler) = 0;
+    virtual void SetOnPlaylistVisibilityChanged(std::function<void()> handler) = 0;
 };

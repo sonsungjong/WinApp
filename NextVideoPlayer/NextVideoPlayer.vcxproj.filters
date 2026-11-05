@@ -26,19 +26,43 @@
     <ClInclude Include="Models\ConfigService.h">
       <Filter>Models</Filter>
     </ClInclude>
+    <ClInclude Include="Models\ControlBarModel.h">
+      <Filter>Models</Filter>
+    </ClInclude>
     <ClInclude Include="Models\IVideoModel.h">
       <Filter>Models</Filter>
     </ClInclude>
     <ClInclude Include="Models\VideoModel.h">
       <Filter>Models</Filter>
     </ClInclude>
+    <ClInclude Include="Views\ControlBarView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\FontHelper.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\IControlBarView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
     <ClInclude Include="Views\IMainView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\ISettingsView.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="Views\MainView.h">
       <Filter>Views</Filter>
     </ClInclude>
+    <ClInclude Include="Views\SettingsView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Presenters\ControlBarPresenter.h">
+      <Filter>Presenters</Filter>
+    </ClInclude>
     <ClInclude Include="Presenters\MainPresenter.h">
+      <Filter>Presenters</Filter>
+    </ClInclude>
+    <ClInclude Include="Presenters\SettingsPresenter.h">
       <Filter>Presenters</Filter>
     </ClInclude>
   </ItemGroup>
@@ -47,13 +71,31 @@
     <ClCompile Include="Models\ConfigService.cpp">
       <Filter>Models</Filter>
     </ClCompile>
+    <ClCompile Include="Models\ControlBarModel.cpp">
+      <Filter>Models</Filter>
+    </ClCompile>
     <ClCompile Include="Models\VideoModel.cpp">
       <Filter>Models</Filter>
+    </ClCompile>
+    <ClCompile Include="Views\ControlBarView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="Views\FontHelper.cpp">
+      <Filter>Views</Filter>
     </ClCompile>
     <ClCompile Include="Views\MainView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="Views\SettingsView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="Presenters\ControlBarPresenter.cpp">
+      <Filter>Presenters</Filter>
+    </ClCompile>
     <ClCompile Include="Presenters\MainPresenter.cpp">
+      <Filter>Presenters</Filter>
+    </ClCompile>
+    <ClCompile Include="Presenters\SettingsPresenter.cpp">
       <Filter>Presenters</Filter>
     </ClCompile>
   </ItemGroup>

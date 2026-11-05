@@ -8,6 +8,7 @@
 #include <windowsx.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <objbase.h>
 #include <d2d1.h>
 #include <dwrite.h>

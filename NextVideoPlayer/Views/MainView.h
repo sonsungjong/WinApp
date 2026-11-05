@@ -143,6 +143,7 @@ private:
 
     Microsoft::WRL::ComPtr<ID2D1Factory> m_d2dFactory;
     Microsoft::WRL::ComPtr<IDWriteFactory> m_dwriteFactory;
+    Microsoft::WRL::ComPtr<ITaskbarList2> m_taskbarList;
     Microsoft::WRL::ComPtr<IDWriteFontCollection1> m_customFontCollection;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_textFormat;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_uiTextFormat;

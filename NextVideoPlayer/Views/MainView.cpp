@@ -12,9 +12,31 @@ namespace
     constexpr int kDefaultHeight = 760;
     constexpr int kControlBarHeight = 76;
 
+    constexpr wchar_t kVideoHostClassName[] = L"NextVideoPlayer_VideoHostWnd";
     constexpr wchar_t kControlBarClassName[] = L"NextVideoPlayer_ControlBarWnd";
     constexpr wchar_t kSettingsClassName[] = L"NextVideoPlayer_SettingsWnd";
     constexpr wchar_t kPlaylistClassName[] = L"NextVideoPlayer_PlaylistWnd";
+
+    LRESULT CALLBACK VideoHostWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+    {
+        switch (msg)
+        {
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps{};
+            HDC hdc = BeginPaint(hWnd, &ps);
+            if (hdc)
+            {
+                FillRect(hdc, &ps.rcPaint, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+            }
+            EndPaint(hWnd, &ps);
+            return 0;
+        }
+        }
+        return DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
 
     constexpr int IDC_SET_SEEK_EDIT = 1001;
     constexpr int IDC_SET_REPEAT_CHK = 1002;
@@ -235,9 +257,9 @@ bool MainView::Initialize(HINSTANCE hInstance)
 
     m_videoHwnd = CreateWindowExW(
         0,
-        L"STATIC",
+        kVideoHostClassName,
         nullptr,
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        WS_CHILD | WS_CLIPSIBLINGS,
         0,
         0,
         clientW,
@@ -253,6 +275,11 @@ bool MainView::Initialize(HINSTANCE hInstance)
     }
 
     EnableWindow(m_videoHwnd, FALSE);
+
+    if (SUCCEEDED(CoCreateInstance(CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_taskbarList))))
+    {
+        m_taskbarList->HrInit();
+    }
 
     m_controlBarHwnd = CreateWindowExW(
         0,
@@ -434,9 +461,15 @@ void MainView::ToggleFullscreen()
             screenH,
             SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
+        if (m_taskbarList)
+        {
+            m_taskbarList->MarkFullscreenWindow(m_hWnd, TRUE);
+        }
+
         UpdateLayout();
         SetForegroundWindow(m_hWnd);
         SetFocus(m_hWnd);
+        Render();
     }
     else
     {
@@ -453,6 +486,11 @@ void MainView::ExitFullscreen()
 
     m_isFullscreen = false;
     m_isControlBarVisible = true;
+
+    if (m_taskbarList)
+    {
+        m_taskbarList->MarkFullscreenWindow(m_hWnd, FALSE);
+    }
 
     SetMenu(m_hWnd, m_hMenu);
     SetWindowLongPtrW(m_hWnd, GWL_STYLE, m_savedStyle);
@@ -526,13 +564,17 @@ void MainView::UpdateFullscreenAutoHide()
     }
     else
     {
-        if (m_isControlBarVisible && (GetTickCount64() - m_lastMouseActiveTick >= 500))
+        if (m_isControlBarVisible && (GetTickCount64() - m_lastMouseActiveTick >= 200))
         {
             m_isControlBarVisible = false;
             ShowWindow(m_controlBarHwnd, SW_HIDE);
-            if (m_videoHwnd)
+            if (m_isVideoVisible && m_videoHwnd)
             {
                 InvalidateRect(m_videoHwnd, nullptr, FALSE);
+            }
+            else
+            {
+                Render();
             }
             InvalidateRect(m_hWnd, nullptr, FALSE);
         }
@@ -1040,13 +1082,23 @@ ATOM MainView::RegisterWindowClass(HINSTANCE hInstance) const
     wcex.hbrBackground = nullptr;
     wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_NEXTVIDEOPLAYER);
     wcex.lpszClassName = m_windowClass.c_str();
-    wcex.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_SMALL));
+    wcex.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_NEXTVIDEOPLAYER));
 
     return RegisterClassExW(&wcex);
 }
 
 void MainView::RegisterHelperClasses(HINSTANCE hInstance) const
 {
+    WNDCLASSEXW videoWc{};
+    videoWc.cbSize = sizeof(WNDCLASSEXW);
+    videoWc.style = CS_HREDRAW | CS_VREDRAW;
+    videoWc.lpfnWndProc = VideoHostWndProc;
+    videoWc.hInstance = hInstance;
+    videoWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    videoWc.hbrBackground = nullptr;
+    videoWc.lpszClassName = kVideoHostClassName;
+    RegisterClassExW(&videoWc);
+
     WNDCLASSEXW barWc{};
     barWc.cbSize = sizeof(WNDCLASSEXW);
     barWc.style = CS_HREDRAW | CS_VREDRAW;

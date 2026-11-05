@@ -7,8 +7,13 @@ MainPresenter::MainPresenter(IMainView& view, IVideoModel& model)
 {
 }
 
-void MainPresenter::Initialize()
+bool MainPresenter::Initialize()
 {
+    if (!m_model.Initialize(m_view.GetVideoHwnd()))
+    {
+        return false;
+    }
+
     m_view.SetOnOpenFileRequested([this]() { OnOpenFileRequested(); });
     m_view.SetOnFileDropped([this](const std::wstring& path) { OnFileDropped(path); });
     m_view.SetOnPlayPauseRequested([this]() { OnPlayPauseRequested(); });
@@ -17,34 +22,22 @@ void MainPresenter::Initialize()
 
     m_view.SetRepeatChecked(m_model.IsRepeatEnabled());
     UpdateView();
+    return true;
 }
 
 void MainPresenter::Tick()
 {
-    if (IsPlaying())
+    PlaybackState prevState = m_model.GetState();
+    m_model.ProcessEvents();
+    if (m_model.GetState() != prevState)
     {
-        m_view.Render();
+        UpdateView();
     }
 }
 
 bool MainPresenter::IsPlaying() const
 {
     return m_model.GetState() == PlaybackState::Playing;
-}
-
-void MainPresenter::OnPlaybackEnded()
-{
-    if (m_model.IsRepeatEnabled() && m_model.HasMedia())
-    {
-        m_model.Stop();
-        m_model.Play();
-    }
-    else
-    {
-        m_model.Stop();
-    }
-
-    UpdateView();
 }
 
 void MainPresenter::OnOpenFileRequested()
@@ -103,7 +96,6 @@ void MainPresenter::LoadAndPlayFile(const std::wstring& filePath)
 {
     if (m_model.OpenFile(filePath))
     {
-        m_model.Play();
         UpdateView();
     }
 }
@@ -112,6 +104,7 @@ void MainPresenter::UpdateView()
 {
     if (!m_model.HasMedia())
     {
+        m_view.SetVideoVisible(false);
         m_view.SetWindowTitle(L"NextVideoPlayer");
         m_view.SetStatusText(L"동영상 파일을 열거나 창으로 드래그하세요.");
         return;
@@ -119,9 +112,12 @@ void MainPresenter::UpdateView()
 
     std::filesystem::path path(m_model.GetFilePath());
     std::wstring fileName = path.filename().wstring();
+    PlaybackState state = m_model.GetState();
+
+    m_view.SetVideoVisible(state != PlaybackState::Stopped);
 
     std::wstring stateLabel;
-    switch (m_model.GetState())
+    switch (state)
     {
     case PlaybackState::Playing:
         stateLabel = L"재생 중";
@@ -135,6 +131,6 @@ void MainPresenter::UpdateView()
     }
 
     std::wstring repeatLabel = m_model.IsRepeatEnabled() ? L" [반복 ON]" : L" [반복 OFF]";
-    m_view.SetWindowTitle(L"NextVideoPlayer - " + fileName);
+    m_view.SetWindowTitle(L"NextVideoPlayer - " + fileName + L" (" + stateLabel + L")" + repeatLabel);
     m_view.SetStatusText(fileName + L" (" + stateLabel + L")" + repeatLabel);
 }

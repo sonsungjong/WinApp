@@ -9,10 +9,9 @@ public:
     MainPresenter(IMainView& view, IVideoModel& model);
     ~MainPresenter() = default;
 
-    void Initialize();
+    bool Initialize();
     void Tick();
     bool IsPlaying() const;
-    void OnPlaybackEnded();
 
 private:
     void OnOpenFileRequested();

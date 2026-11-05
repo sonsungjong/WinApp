@@ -9,6 +9,8 @@ public:
 
     virtual void Show(int cmdShow) = 0;
     virtual HWND GetHwnd() const = 0;
+    virtual HWND GetVideoHwnd() const = 0;
+    virtual void SetVideoVisible(bool visible) = 0;
     virtual void SetWindowTitle(const std::wstring& title) = 0;
     virtual void SetStatusText(const std::wstring& statusText) = 0;
     virtual void SetRepeatChecked(bool checked) = 0;

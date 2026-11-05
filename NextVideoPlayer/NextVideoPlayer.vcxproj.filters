@@ -63,5 +63,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Readme.md" />
+    <None Include="setup_sdk.bat" />
   </ItemGroup>
 </Project>

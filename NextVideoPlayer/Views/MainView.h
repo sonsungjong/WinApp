@@ -12,6 +12,8 @@ public:
 
     void Show(int cmdShow) override;
     HWND GetHwnd() const override;
+    HWND GetVideoHwnd() const override;
+    void SetVideoVisible(bool visible) override;
     void SetWindowTitle(const std::wstring& title) override;
     void SetStatusText(const std::wstring& statusText) override;
     void SetRepeatChecked(bool checked) override;
@@ -39,6 +41,8 @@ private:
 
     HINSTANCE m_hInstance = nullptr;
     HWND m_hWnd = nullptr;
+    HWND m_videoHwnd = nullptr;
+    bool m_isVideoVisible = false;
     std::wstring m_windowClass;
     std::wstring m_defaultTitle;
     std::wstring m_statusText;

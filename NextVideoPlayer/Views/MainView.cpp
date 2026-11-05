@@ -31,7 +31,7 @@ bool MainView::Initialize(HINSTANCE hInstance)
         WS_EX_ACCEPTFILES,
         m_windowClass.c_str(),
         m_defaultTitle.c_str(),
-        WS_OVERLAPPEDWINDOW,
+        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         kDefaultWidth,
@@ -41,7 +41,35 @@ bool MainView::Initialize(HINSTANCE hInstance)
         hInstance,
         this);
 
-    return m_hWnd != nullptr;
+    if (!m_hWnd)
+    {
+        return false;
+    }
+
+    RECT clientRect{};
+    GetClientRect(m_hWnd, &clientRect);
+
+    m_videoHwnd = CreateWindowExW(
+        0,
+        L"STATIC",
+        nullptr,
+        WS_CHILD | WS_CLIPSIBLINGS,
+        0,
+        0,
+        clientRect.right - clientRect.left,
+        clientRect.bottom - clientRect.top,
+        m_hWnd,
+        nullptr,
+        hInstance,
+        nullptr);
+
+    if (!m_videoHwnd)
+    {
+        return false;
+    }
+
+    EnableWindow(m_videoHwnd, FALSE);
+    return true;
 }
 
 void MainView::Show(int cmdShow)
@@ -58,6 +86,25 @@ HWND MainView::GetHwnd() const
     return m_hWnd;
 }
 
+HWND MainView::GetVideoHwnd() const
+{
+    return m_videoHwnd;
+}
+
+void MainView::SetVideoVisible(bool visible)
+{
+    m_isVideoVisible = visible;
+    if (m_videoHwnd)
+    {
+        ShowWindow(m_videoHwnd, visible ? SW_SHOW : SW_HIDE);
+    }
+
+    if (!visible)
+    {
+        Render();
+    }
+}
+
 void MainView::SetWindowTitle(const std::wstring& title)
 {
     if (m_hWnd)
@@ -69,7 +116,10 @@ void MainView::SetWindowTitle(const std::wstring& title)
 void MainView::SetStatusText(const std::wstring& statusText)
 {
     m_statusText = statusText;
-    Render();
+    if (!m_isVideoVisible)
+    {
+        Render();
+    }
 }
 
 void MainView::SetRepeatChecked(bool checked)
@@ -91,7 +141,7 @@ std::wstring MainView::PromptOpenVideoFile()
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = m_hWnd;
-    ofn.lpstrFilter = L"동영상 파일 (*.mp4;*.mkv;*.avi;*.wmv;*.mov)\0*.mp4;*.mkv;*.avi;*.wmv;*.mov\0모든 파일 (*.*)\0*.*\0";
+    ofn.lpstrFilter = L"동영상 파일 (*.mp4;*.mkv;*.avi;*.wmv;*.mov;*.webm;*.flv;*.ts)\0*.mp4;*.mkv;*.avi;*.wmv;*.mov;*.webm;*.flv;*.ts\0모든 파일 (*.*)\0*.*\0";
     ofn.lpstrFile = fileBuffer;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
@@ -106,7 +156,7 @@ std::wstring MainView::PromptOpenVideoFile()
 
 void MainView::Render()
 {
-    if (!m_hWnd)
+    if (!m_hWnd || m_isVideoVisible)
     {
         return;
     }
@@ -318,6 +368,11 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
 void MainView::OnResize(UINT width, UINT height)
 {
+    if (m_videoHwnd)
+    {
+        MoveWindow(m_videoHwnd, 0, 0, static_cast<int>(width), static_cast<int>(height), TRUE);
+    }
+
     if (m_renderTarget)
     {
         m_renderTarget->Resize(D2D1::SizeU(width, height));

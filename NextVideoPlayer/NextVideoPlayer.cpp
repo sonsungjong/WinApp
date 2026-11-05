@@ -29,7 +29,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         }
 
         MainPresenter presenter(view, model);
-        presenter.Initialize();
+        if (!presenter.Initialize())
+        {
+            CoUninitialize();
+            return FALSE;
+        }
 
         view.Show(nCmdShow);
 
@@ -58,6 +62,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             if (presenter.IsPlaying())
             {
                 presenter.Tick();
+                MsgWaitForMultipleObjectsEx(0, nullptr, 16, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             }
             else
             {

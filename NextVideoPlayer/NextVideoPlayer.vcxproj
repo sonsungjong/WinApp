@@ -126,7 +126,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <PreBuildEvent>
-      <Command>if not exist "$(ProjectDir)ThirdParty\libmpv\libmpv.lib" call "$(ProjectDir)setup_sdk.bat"</Command>
+      <Command>call "$(ProjectDir)setup_sdk.bat"</Command>
     </PreBuildEvent>
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -151,7 +151,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <PreBuildEvent>
-      <Command>if not exist "$(ProjectDir)ThirdParty\libmpv\libmpv.lib" call "$(ProjectDir)setup_sdk.bat"</Command>
+      <Command>call "$(ProjectDir)setup_sdk.bat"</Command>
     </PreBuildEvent>
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>

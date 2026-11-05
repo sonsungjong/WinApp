@@ -12,25 +12,60 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    VideoModel model;
-    MainView view;
-
-    if (!view.Initialize(hInstance))
+    if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)))
     {
         return FALSE;
     }
 
-    MainPresenter presenter(view, model);
-    presenter.Initialize();
-
-    view.Show(nCmdShow);
-
-    MSG msg{};
-    while (GetMessageW(&msg, nullptr, 0, 0))
+    int exitCode = 0;
     {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        VideoModel model;
+        MainView view;
+
+        if (!view.Initialize(hInstance))
+        {
+            CoUninitialize();
+            return FALSE;
+        }
+
+        MainPresenter presenter(view, model);
+        presenter.Initialize();
+
+        view.Show(nCmdShow);
+
+        MSG msg{};
+        bool running = true;
+        while (running)
+        {
+            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
+            {
+                if (msg.message == WM_QUIT)
+                {
+                    exitCode = static_cast<int>(msg.wParam);
+                    running = false;
+                    break;
+                }
+
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+
+            if (!running)
+            {
+                break;
+            }
+
+            if (presenter.IsPlaying())
+            {
+                presenter.Tick();
+            }
+            else
+            {
+                WaitMessage();
+            }
+        }
     }
 
-    return static_cast<int>(msg.wParam);
+    CoUninitialize();
+    return exitCode;
 }

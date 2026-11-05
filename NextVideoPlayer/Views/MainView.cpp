@@ -12,6 +12,11 @@ bool MainView::Initialize(HINSTANCE hInstance)
 {
     m_hInstance = hInstance;
 
+    if (FAILED(CreateDeviceIndependentResources()))
+    {
+        return false;
+    }
+
     WCHAR titleBuffer[kMaxLoadString]{};
     WCHAR classBuffer[kMaxLoadString]{};
     LoadStringW(hInstance, IDS_APP_TITLE, titleBuffer, kMaxLoadString);
@@ -64,7 +69,7 @@ void MainView::SetWindowTitle(const std::wstring& title)
 void MainView::SetStatusText(const std::wstring& statusText)
 {
     m_statusText = statusText;
-    RefreshView();
+    Render();
 }
 
 void MainView::SetRepeatChecked(bool checked)
@@ -99,11 +104,37 @@ std::wstring MainView::PromptOpenVideoFile()
     return {};
 }
 
-void MainView::RefreshView()
+void MainView::Render()
 {
-    if (m_hWnd)
+    if (!m_hWnd)
     {
-        InvalidateRect(m_hWnd, nullptr, TRUE);
+        return;
+    }
+
+    if (FAILED(CreateDeviceResources()))
+    {
+        return;
+    }
+
+    m_renderTarget->BeginDraw();
+    m_renderTarget->Clear(D2D1::ColorF(0.05f, 0.05f, 0.05f));
+
+    if (!m_statusText.empty() && m_textFormat && m_textBrush)
+    {
+        D2D1_SIZE_F size = m_renderTarget->GetSize();
+        D2D1_RECT_F layoutRect = D2D1::RectF(0.0f, 0.0f, size.width, size.height);
+        m_renderTarget->DrawTextW(
+            m_statusText.c_str(),
+            static_cast<UINT32>(m_statusText.length()),
+            m_textFormat.Get(),
+            layoutRect,
+            m_textBrush.Get());
+    }
+
+    HRESULT hr = m_renderTarget->EndDraw();
+    if (hr == D2DERR_RECREATE_TARGET)
+    {
+        DiscardDeviceResources();
     }
 }
 
@@ -141,12 +172,79 @@ ATOM MainView::RegisterWindowClass(HINSTANCE hInstance) const
     wcex.hInstance = hInstance;
     wcex.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_NEXTVIDEOPLAYER));
     wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wcex.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    wcex.hbrBackground = nullptr;
     wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_NEXTVIDEOPLAYER);
     wcex.lpszClassName = m_windowClass.c_str();
     wcex.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_SMALL));
 
     return RegisterClassExW(&wcex);
+}
+
+HRESULT MainView::CreateDeviceIndependentResources()
+{
+    HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, m_d2dFactory.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    hr = DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED,
+        __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(m_dwriteFactory.GetAddressOf()));
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    hr = m_dwriteFactory->CreateTextFormat(
+        L"Malgun Gothic",
+        nullptr,
+        DWRITE_FONT_WEIGHT_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL,
+        18.0f,
+        L"ko-kr",
+        m_textFormat.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    return S_OK;
+}
+
+HRESULT MainView::CreateDeviceResources()
+{
+    if (m_renderTarget)
+    {
+        return S_OK;
+    }
+
+    RECT rc{};
+    GetClientRect(m_hWnd, &rc);
+
+    D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
+    HRESULT hr = m_d2dFactory->CreateHwndRenderTarget(
+        D2D1::RenderTargetProperties(),
+        D2D1::HwndRenderTargetProperties(m_hWnd, size),
+        m_renderTarget.GetAddressOf());
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    return m_renderTarget->CreateSolidColorBrush(
+        D2D1::ColorF(0.88f, 0.88f, 0.88f),
+        m_textBrush.GetAddressOf());
+}
+
+void MainView::DiscardDeviceResources()
+{
+    m_textBrush.Reset();
+    m_renderTarget.Reset();
 }
 
 LRESULT CALLBACK MainView::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -193,11 +291,24 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
 
-    case WM_PAINT:
-        OnPaint();
+    case WM_SIZE:
+        OnResize(LOWORD(lParam), HIWORD(lParam));
         return 0;
 
+    case WM_ERASEBKGND:
+        return 1;
+
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps{};
+        BeginPaint(m_hWnd, &ps);
+        Render();
+        EndPaint(m_hWnd, &ps);
+        return 0;
+    }
+
     case WM_DESTROY:
+        DiscardDeviceResources();
         PostQuitMessage(0);
         return 0;
     }
@@ -205,28 +316,12 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     return DefWindowProcW(m_hWnd, message, wParam, lParam);
 }
 
-void MainView::OnPaint()
+void MainView::OnResize(UINT width, UINT height)
 {
-    PAINTSTRUCT ps{};
-    HDC hdc = BeginPaint(m_hWnd, &ps);
-
-    RECT clientRect{};
-    GetClientRect(m_hWnd, &clientRect);
-    FillRect(hdc, &clientRect, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-
-    if (!m_statusText.empty())
+    if (m_renderTarget)
     {
-        SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, RGB(220, 220, 220));
-        DrawTextW(
-            hdc,
-            m_statusText.c_str(),
-            -1,
-            &clientRect,
-            DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        m_renderTarget->Resize(D2D1::SizeU(width, height));
     }
-
-    EndPaint(m_hWnd, &ps);
 }
 
 void MainView::OnCommand(int commandId)
@@ -276,4 +371,3 @@ void MainView::OnDropFiles(HDROP hDrop)
     }
     DragFinish(hDrop);
 }
-

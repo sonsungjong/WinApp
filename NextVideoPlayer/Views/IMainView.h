@@ -13,7 +13,7 @@ public:
     virtual void SetStatusText(const std::wstring& statusText) = 0;
     virtual void SetRepeatChecked(bool checked) = 0;
     virtual std::wstring PromptOpenVideoFile() = 0;
-    virtual void RefreshView() = 0;
+    virtual void Render() = 0;
 
     virtual void SetOnOpenFileRequested(std::function<void()> handler) = 0;
     virtual void SetOnFileDropped(std::function<void(const std::wstring&)> handler) = 0;
@@ -21,4 +21,3 @@ public:
     virtual void SetOnStopRequested(std::function<void()> handler) = 0;
     virtual void SetOnRepeatToggled(std::function<void()> handler) = 0;
 };
-

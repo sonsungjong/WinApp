@@ -19,6 +19,19 @@ void MainPresenter::Initialize()
     UpdateView();
 }
 
+void MainPresenter::Tick()
+{
+    if (IsPlaying())
+    {
+        m_view.Render();
+    }
+}
+
+bool MainPresenter::IsPlaying() const
+{
+    return m_model.GetState() == PlaybackState::Playing;
+}
+
 void MainPresenter::OnPlaybackEnded()
 {
     if (m_model.IsRepeatEnabled() && m_model.HasMedia())
@@ -125,4 +138,3 @@ void MainPresenter::UpdateView()
     m_view.SetWindowTitle(L"NextVideoPlayer - " + fileName);
     m_view.SetStatusText(fileName + L" (" + stateLabel + L")" + repeatLabel);
 }
-

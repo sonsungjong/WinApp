@@ -10,6 +10,8 @@ public:
     ~MainPresenter() = default;
 
     void Initialize();
+    void Tick();
+    bool IsPlaying() const;
     void OnPlaybackEnded();
 
 private:
@@ -24,4 +26,3 @@ private:
     IMainView& m_view;
     IVideoModel& m_model;
 };
-

@@ -1,5 +1,5 @@
 #include "framework.h"
-#include "NextVideoPlayer.h"
+#include "App.h"
 #include "Models/ConfigService.h"
 #include "Models/ControlBarModel.h"
 #include "Models/VideoModel.h"

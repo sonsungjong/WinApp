@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Models">
@@ -17,7 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
-    <ClInclude Include="NextVideoPlayer.h" />
+    <ClInclude Include="App.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="Models\AppConfig.h">
@@ -67,7 +67,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="NextVideoPlayer.cpp" />
+    <ClCompile Include="App.cpp" />
     <ClCompile Include="Models\ConfigService.cpp">
       <Filter>Models</Filter>
     </ClCompile>
@@ -105,6 +105,9 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
+    <Image Include="img\next_video_player.png">
+      <Filter>리소스 파일</Filter>
+    </Image>
     <Image Include="NextVideoPlayer.ico">
       <Filter>리소스 파일</Filter>
     </Image>

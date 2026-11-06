@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Models/IVideoModel.h"
+#include <cstdint>
 
 struct mpv_handle;
 
@@ -9,6 +10,8 @@ class VideoModel : public IVideoModel
 public:
     VideoModel() = default;
     ~VideoModel() override;
+    VideoModel(const VideoModel&) = delete;
+    VideoModel& operator=(const VideoModel&) = delete;
 
     bool Initialize(HWND videoHwnd) override;
     bool OpenFile(const std::wstring& filePath) override;
@@ -61,6 +64,7 @@ private:
     static std::string ToUtf8(const std::wstring& wideStr);
 
     mpv_handle* m_mpv = nullptr;
+    std::int64_t m_playbackEntryId = -1;
     std::wstring m_filePath;
     PlaybackState m_state = PlaybackState::Stopped;
 

@@ -35,6 +35,8 @@ bool VideoModel::Initialize(HWND videoHwnd)
     mpv_set_option_string(m_mpv, "gpu-api", "d3d11");
     mpv_set_option_string(m_mpv, "d3d11-flip", "no");
     mpv_set_option_string(m_mpv, "hwdec", "auto");
+    // Losing an audio device must not interrupt unattended video playback.
+    mpv_set_option_string(m_mpv, "audio-fallback-to-null", "yes");
     mpv_set_option_string(m_mpv, "keep-open", "no");
     mpv_set_option_string(m_mpv, "loop-file", "no");
     mpv_set_option_string(m_mpv, "sub-auto", "fuzzy");
@@ -87,6 +89,13 @@ bool VideoModel::LoadFileInternal(const std::wstring& filePath)
         return false;
     }
 
+    // A replaced file may still have pending events in libmpv's event queue.
+    if (mpv_get_property(m_mpv, "playlist/0/id", MPV_FORMAT_INT64, &m_playbackEntryId) < 0)
+    {
+        Stop();
+        return false;
+    }
+
     int pauseFlag = 0;
     mpv_set_property(m_mpv, "pause", MPV_FORMAT_FLAG, &pauseFlag);
 
@@ -127,6 +136,7 @@ void VideoModel::Pause()
 
 void VideoModel::Stop()
 {
+    m_playbackEntryId = -1;
     if (m_mpv)
     {
         const char* cmd[] = { "stop", nullptr };
@@ -149,12 +159,18 @@ void VideoModel::ProcessEvents()
         if (event->event_id == MPV_EVENT_END_FILE)
         {
             auto* endFile = static_cast<mpv_event_end_file*>(event->data);
-            if (endFile && endFile->reason == MPV_END_FILE_REASON_EOF)
+            if (!endFile || m_playbackEntryId < 0 || endFile->playlist_entry_id != m_playbackEntryId)
+            {
+                continue;
+            }
+
+            m_playbackEntryId = -1;
+            if (endFile->reason == MPV_END_FILE_REASON_EOF)
             {
                 m_state = PlaybackState::Stopped;
                 if (m_onPlaybackEnded) m_onPlaybackEnded();
             }
-            else if (endFile && endFile->reason == MPV_END_FILE_REASON_ERROR)
+            else if (endFile->reason == MPV_END_FILE_REASON_ERROR)
             {
                 m_state = PlaybackState::Stopped;
             }

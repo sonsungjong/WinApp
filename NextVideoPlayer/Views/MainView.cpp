@@ -490,6 +490,7 @@ void MainView::RenderMainPaint(HDC hdc)
 
     if (FAILED(m_renderTarget->BindDC(hdc, &rc)))
     {
+        DiscardDeviceResources();
         return;
     }
 
@@ -632,11 +633,19 @@ HRESULT MainView::CreateDeviceResources()
     HRESULT hr = m_d2dFactory->CreateDCRenderTarget(&props, m_renderTarget.GetAddressOf());
     if (FAILED(hr))
     {
+        DiscardDeviceResources();
         return hr;
     }
 
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.08f, 0.08f, 0.10f), m_mainBgBrush.GetAddressOf());
-    return m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.88f, 0.88f, 0.88f), m_mainTextBrush.GetAddressOf());
+    if (FAILED(hr = m_renderTarget->CreateSolidColorBrush(
+            D2D1::ColorF(0.08f, 0.08f, 0.10f), m_mainBgBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(
+            D2D1::ColorF(0.88f, 0.88f, 0.88f), m_mainTextBrush.GetAddressOf())))
+    {
+        DiscardDeviceResources();
+        return hr;
+    }
+    return S_OK;
 }
 
 void MainView::DiscardDeviceResources()
@@ -795,6 +804,10 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_DESTROY:
         DiscardDeviceResources();
+        // Fullscreen detaches this menu, so the window no longer owns its lifetime.
+        if (m_hMenu && GetMenu(m_hWnd) != m_hMenu)
+            DestroyMenu(m_hMenu);
+        m_hMenu = nullptr;
         PostQuitMessage(0);
         return 0;
     }

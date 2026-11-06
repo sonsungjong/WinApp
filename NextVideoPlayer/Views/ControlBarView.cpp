@@ -290,6 +290,7 @@ HRESULT ControlBarView::CreateDeviceResources()
     HRESULT hr = m_d2dFactory->CreateDCRenderTarget(&props, m_renderTarget.GetAddressOf());
     if (FAILED(hr))
     {
+        DiscardDeviceResources();
         return hr;
     }
 
@@ -313,17 +314,22 @@ HRESULT ControlBarView::CreateDeviceResources()
             m_barGradientBrush.GetAddressOf());
     }
 
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0xF5F5F7, 1.0f), m_barTextBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0xD4D4DC, 1.0f), m_barSubTextBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x18191D, 1.0f), m_barBgBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x262830, 1.0f), m_btnBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x353844, 1.0f), m_btnHoverBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x484B58, 1.0f), m_btnBorderBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x2478E8, 1.0f), m_accentBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x3B8EFF, 1.0f), m_accentHoverBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x383A44, 1.0f), m_trackBrush.GetAddressOf());
-    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x585B6B, 1.0f), m_trackHoverBrush.GetAddressOf());
-    return m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFBE26, 1.0f), m_abMarkerBrush.GetAddressOf());
+    if (FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0xF5F5F7, 1.0f), m_barTextBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0xD4D4DC, 1.0f), m_barSubTextBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x18191D, 1.0f), m_barBgBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x262830, 1.0f), m_btnBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x353844, 1.0f), m_btnHoverBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x484B58, 1.0f), m_btnBorderBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x2478E8, 1.0f), m_accentBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x3B8EFF, 1.0f), m_accentHoverBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x383A44, 1.0f), m_trackBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0x585B6B, 1.0f), m_trackHoverBrush.GetAddressOf())) ||
+        FAILED(hr = m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFBE26, 1.0f), m_abMarkerBrush.GetAddressOf())))
+    {
+        DiscardDeviceResources();
+        return hr;
+    }
+    return S_OK;
 }
 
 void ControlBarView::DiscardDeviceResources()
@@ -364,6 +370,7 @@ void ControlBarView::Draw(HDC hdc)
 
     if (FAILED(m_renderTarget->BindDC(hdc, &rc)))
     {
+        DiscardDeviceResources();
         return;
     }
 

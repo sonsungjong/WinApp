@@ -35,6 +35,29 @@ namespace
         return DefWindowProcW(hWnd, msg, wParam, lParam);
     }
 
+    // Size the window to the monitor rectangle, including the area the taskbar
+    // occupies. Callers must already have switched the window to WS_POPUP and
+    // must pass SWP_FRAMECHANGED so the non-client metrics are rebuilt.
+    void PlaceWindowOverMonitor(HWND hwnd, HWND insertAfter, UINT flags)
+    {
+        HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi{ sizeof(MONITORINFO) };
+        if (!GetMonitorInfoW(hMonitor, &mi))
+        {
+            SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, flags | SWP_NOMOVE | SWP_NOSIZE);
+            return;
+        }
+
+        SetWindowPos(
+            hwnd,
+            insertAfter,
+            mi.rcMonitor.left,
+            mi.rcMonitor.top,
+            mi.rcMonitor.right - mi.rcMonitor.left,
+            mi.rcMonitor.bottom - mi.rcMonitor.top,
+            flags);
+    }
+
 }
 
 MainView::MainView(IControlBarView& controlBarView)
@@ -227,9 +250,12 @@ void MainView::SetTopMost(bool topMost)
     m_topMost = topMost;
     if (m_hWnd)
     {
+        // Fullscreen must stay out of the topmost band; ExitFullscreen applies
+        // this preference again with the restored windowed frame.
+        const bool applyTopMost = topMost && !m_isFullscreen;
         SetWindowPos(
             m_hWnd,
-            (m_isFullscreen || topMost) ? HWND_TOPMOST : HWND_NOTOPMOST,
+            applyTopMost ? HWND_TOPMOST : HWND_NOTOPMOST,
             0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
@@ -248,35 +274,31 @@ void MainView::ToggleFullscreen()
         m_savedExStyle = GetWindowLongPtrW(m_hWnd, GWL_EXSTYLE);
         GetWindowPlacement(m_hWnd, &m_savedPlacement);
 
-        HMONITOR hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
-        MONITORINFO mi{ sizeof(MONITORINFO) };
-        GetMonitorInfoW(hMonitor, &mi);
-
-        int screenW = mi.rcMonitor.right - mi.rcMonitor.left;
-        int screenH = mi.rcMonitor.bottom - mi.rcMonitor.top;
-
         m_isFullscreen = true;
         m_lastMouseActiveTick = GetTickCount64();
 
         m_controlBarView.SetVisible(false);
 
+        // Stripping WS_OVERLAPPEDWINDOW leaves an overlapped window. Windows 10/11
+        // does not treat that as fullscreen, so Explorer keeps the taskbar in the
+        // topmost band and composites it as an opaque bar (often missing from
+        // Snipping Tool / Win+Shift+S). WS_POPUP covering rcMonitor is the style
+        // the shell hides the taskbar for. HWND_TOPMOST shares that band and the
+        // bar stays visible, so fullscreen stays HWND_NOTOPMOST.
         SetMenu(m_hWnd, nullptr);
         SetWindowLongPtrW(
             m_hWnd,
             GWL_STYLE,
-            (m_savedStyle & ~(WS_OVERLAPPEDWINDOW | WS_MAXIMIZE | WS_MINIMIZE)) | WS_CLIPCHILDREN | WS_VISIBLE);
+            (m_savedStyle & ~(WS_OVERLAPPEDWINDOW | WS_MAXIMIZE | WS_MINIMIZE))
+                | WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE);
         SetWindowLongPtrW(
             m_hWnd,
             GWL_EXSTYLE,
-            m_savedExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+            m_savedExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_TOPMOST));
 
-        SetWindowPos(
+        PlaceWindowOverMonitor(
             m_hWnd,
-            HWND_TOPMOST,
-            mi.rcMonitor.left,
-            mi.rcMonitor.top,
-            screenW,
-            screenH,
+            HWND_NOTOPMOST,
             SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
         if (m_taskbarList)
@@ -361,15 +383,6 @@ void MainView::UpdateFullscreenAutoHide()
             GetClientRect(m_hWnd, &rc);
             int w = rc.right - rc.left;
             int h = rc.bottom - rc.top;
-
-            if (GetForegroundWindow() == m_hWnd)
-            {
-                SetWindowPos(
-                    m_hWnd,
-                    HWND_TOPMOST,
-                    0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-            }
 
             m_controlBarView.SetBounds(0, h - kControlBarHeight, w, kControlBarHeight, true);
             HWND barHwnd = m_controlBarView.GetHwnd();
@@ -766,15 +779,22 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     {
         if (m_isFullscreen && m_hWnd)
         {
+            // Playback startup can drop activation. Raising HWND_TOPMOST here
+            // put the window in the taskbar's band, and the FALSE path then
+            // sank it so Explorer painted the opaque taskbar over the video.
+            // Re-cover the monitor as a non-topmost popup instead.
             if (wParam == TRUE)
             {
-                SetWindowPos(
+                PlaceWindowOverMonitor(
                     m_hWnd,
-                    HWND_TOPMOST,
-                    0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOSENDCHANGING);
+                    HWND_NOTOPMOST,
+                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                if (m_taskbarList)
+                {
+                    m_taskbarList->MarkFullscreenWindow(m_hWnd, TRUE);
+                }
             }
-            else if (!(m_savedExStyle & WS_EX_TOPMOST))
+            else
             {
                 SetWindowPos(
                     m_hWnd,

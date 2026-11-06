@@ -9,6 +9,11 @@ namespace
     constexpr wchar_t kControlBarClassName[] = L"NextVideoPlayer_ControlBarWnd";
 }
 
+ControlBarView::~ControlBarView()
+{
+    if (m_hWnd && IsWindow(m_hWnd)) DestroyWindow(m_hWnd);
+}
+
 bool ControlBarView::Initialize(HINSTANCE hInstance, HWND parentHwnd, int x, int y, int width, int height)
 {
     m_hInstance = hInstance;
@@ -83,6 +88,7 @@ void ControlBarView::SetVisible(bool visible)
 
     if (!visible)
     {
+        CancelDrag();
         m_isTrackingMouse = false;
         m_hoverMousePt = D2D1::Point2F(-1.0f, -1.0f);
         ShowWindow(m_hWnd, SW_HIDE);
@@ -678,6 +684,10 @@ LRESULT ControlBarView::HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LP
     case WM_LBUTTONUP:
         OnLButtonUp(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
         return 0;
+    case WM_CAPTURECHANGED:
+    case WM_CANCELMODE:
+        CancelDrag();
+        return 0;
     case WM_MOUSEWHEEL:
         if (m_parentHwnd)
         {
@@ -691,8 +701,13 @@ LRESULT ControlBarView::HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LP
         }
         return 0;
     case WM_DESTROY:
+        CancelDrag();
         DiscardDeviceResources();
         return 0;
+    case WM_NCDESTROY:
+        m_hWnd = nullptr;
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, 0);
+        break;
     }
 
     return DefWindowProcW(hWnd, message, wParam, lParam);
@@ -775,16 +790,15 @@ void ControlBarView::OnMouseLeave()
 
 void ControlBarView::OnLButtonUp(float, float)
 {
-    if (m_isDraggingSeek || m_isDraggingVolume)
-    {
-        m_isDraggingSeek = false;
-        m_isDraggingVolume = false;
-        ReleaseCapture();
-        if (m_hWnd)
-        {
-            InvalidateRect(m_hWnd, nullptr, FALSE);
-        }
-    }
+    CancelDrag();
+}
+
+void ControlBarView::CancelDrag()
+{
+    m_isDraggingSeek = false;
+    m_isDraggingVolume = false;
+    if (m_hWnd && GetCapture() == m_hWnd) ReleaseCapture();
+    Invalidate();
 }
 
 void ControlBarView::SeekFromMouseX(float x)
@@ -811,4 +825,3 @@ void ControlBarView::VolumeFromMouseX(float x)
     int volume = static_cast<int>(std::round(ratio * 100.0f));
     m_onVolumeChanged(volume);
 }
-

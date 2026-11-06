@@ -1,4 +1,5 @@
 #include "Views/MainView.h"
+#include "Views/FileDialogs.h"
 #include "Views/FontHelper.h"
 #include "Resource.h"
 #include <algorithm>
@@ -12,7 +13,6 @@ namespace
     constexpr int kControlBarHeight = IControlBarView::kDefaultHeight;
 
     constexpr wchar_t kVideoHostClassName[] = L"NextVideoPlayer_VideoHostWnd";
-    constexpr wchar_t kPlaylistClassName[] = L"NextVideoPlayer_PlaylistWnd";
 
     LRESULT CALLBACK VideoHostWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
@@ -35,17 +35,20 @@ namespace
         return DefWindowProcW(hWnd, msg, wParam, lParam);
     }
 
-    constexpr int IDC_PL_LIST = 2001;
-    constexpr int IDC_PL_PLAY = 2002;
-    constexpr int IDC_PL_ADD = 2003;
-    constexpr int IDC_PL_REMOVE = 2004;
-    constexpr int IDC_PL_CLEAR = 2005;
 }
 
 MainView::MainView(IControlBarView& controlBarView)
     : m_controlBarView(controlBarView)
 {
 }
+
+MainView::~MainView()
+{
+    if (m_hWnd && IsWindow(m_hWnd)) DestroyWindow(m_hWnd);
+}
+
+void MainView::SetOnTimer(std::function<void(UINT_PTR)> handler) { m_onTimer = std::move(handler); }
+void MainView::SetOnPlaylistRequested(std::function<void()> handler) { m_onPlaylistRequested = std::move(handler); }
 
 bool MainView::Initialize(HINSTANCE hInstance)
 {
@@ -217,39 +220,6 @@ void MainView::UpdateMenuState(bool repeatEnabled, bool subtitleVisible, bool to
         CheckMenuItem(m_hMenu, IDM_SUB_TOGGLE, MF_BYCOMMAND | (subtitleVisible ? MF_CHECKED : MF_UNCHECKED));
         CheckMenuItem(m_hMenu, IDM_VIEW_TOPMOST, MF_BYCOMMAND | (topMost ? MF_CHECKED : MF_UNCHECKED));
     }
-}
-
-void MainView::UpdatePlaylistView(const std::vector<std::wstring>& items, int currentIndex)
-{
-    m_cachedPlaylist = items;
-    m_cachedPlaylistIndex = currentIndex;
-
-    if (!m_playlistListBox || !IsWindow(m_playlistListBox))
-    {
-        return;
-    }
-
-    SendMessageW(m_playlistListBox, LB_RESETCONTENT, 0, 0);
-    for (size_t i = 0; i < items.size(); ++i)
-    {
-        std::filesystem::path p(items[i]);
-        std::wstring entry = std::to_wstring(i + 1) + L". " + p.filename().wstring();
-        if (static_cast<int>(i) == currentIndex)
-        {
-            entry = L"▶ " + entry;
-        }
-        SendMessageW(m_playlistListBox, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.c_str()));
-    }
-
-    if (currentIndex >= 0 && currentIndex < static_cast<int>(items.size()))
-    {
-        SendMessageW(m_playlistListBox, LB_SETCURSEL, currentIndex, 0);
-    }
-}
-
-bool MainView::IsPlaylistVisible() const
-{
-    return m_playlistHwnd && IsWindow(m_playlistHwnd) && IsWindowVisible(m_playlistHwnd);
 }
 
 void MainView::SetTopMost(bool topMost)
@@ -438,24 +408,9 @@ void MainView::UpdateFullscreenAutoHide()
     }
 }
 
-std::wstring MainView::PromptOpenVideoFile()
+std::vector<std::wstring> MainView::PromptOpenVideoFiles()
 {
-    WCHAR fileBuffer[MAX_PATH]{};
-
-    OPENFILENAMEW ofn{};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = m_hWnd;
-    ofn.lpstrFilter = L"동영상 파일 (*.mp4;*.mkv;*.avi;*.wmv;*.mov;*.webm;*.flv;*.ts)\0*.mp4;*.mkv;*.avi;*.wmv;*.mov;*.webm;*.flv;*.ts\0모든 파일 (*.*)\0*.*\0";
-    ofn.lpstrFile = fileBuffer;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-
-    if (GetOpenFileNameW(&ofn))
-    {
-        return fileBuffer;
-    }
-
-    return {};
+    return FileDialogs::OpenVideoFiles(m_hWnd);
 }
 
 std::wstring MainView::PromptOpenSubtitleFile()
@@ -497,50 +452,6 @@ std::wstring MainView::PromptSaveScreenshotFile()
     }
 
     return {};
-}
-
-void MainView::TogglePlaylistWindow()
-{
-    if (m_playlistHwnd && IsWindow(m_playlistHwnd))
-    {
-        if (IsWindowVisible(m_playlistHwnd))
-        {
-            ShowWindow(m_playlistHwnd, SW_HIDE);
-        }
-        else
-        {
-            ShowWindow(m_playlistHwnd, SW_SHOW);
-            UpdatePlaylistView(m_cachedPlaylist, m_cachedPlaylistIndex);
-        }
-        if (m_onPlaylistVisibilityChanged)
-        {
-            m_onPlaylistVisibilityChanged();
-        }
-        return;
-    }
-
-    RECT parentRc{};
-    GetWindowRect(m_hWnd, &parentRc);
-
-    m_playlistHwnd = CreateWindowExW(
-        WS_EX_TOOLWINDOW,
-        kPlaylistClassName,
-        L"재생목록 (Playlist)",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
-        parentRc.right - 360,
-        parentRc.top + 60,
-        340,
-        420,
-        m_hWnd,
-        nullptr,
-        m_hInstance,
-        this);
-
-    UpdatePlaylistView(m_cachedPlaylist, m_cachedPlaylistIndex);
-    if (m_onPlaylistVisibilityChanged)
-    {
-        m_onPlaylistVisibilityChanged();
-    }
 }
 
 void MainView::Render()
@@ -631,11 +542,6 @@ void MainView::SetOnSubtitleScaleStep(std::function<void(double)> handler) { m_o
 void MainView::SetOnSubtitlePosStep(std::function<void(int)> handler) { m_onSubtitlePosStep = std::move(handler); }
 void MainView::SetOnTopMostToggled(std::function<void()> handler) { m_onTopMostToggled = std::move(handler); }
 void MainView::SetOnSettingsRequested(std::function<void()> handler) { m_onSettingsRequested = std::move(handler); }
-void MainView::SetOnPlaylistPlayIndex(std::function<void(int)> handler) { m_onPlaylistPlayIndex = std::move(handler); }
-void MainView::SetOnPlaylistAddFiles(std::function<void()> handler) { m_onPlaylistAddFiles = std::move(handler); }
-void MainView::SetOnPlaylistRemoveIndex(std::function<void(int)> handler) { m_onPlaylistRemoveIndex = std::move(handler); }
-void MainView::SetOnPlaylistClear(std::function<void()> handler) { m_onPlaylistClear = std::move(handler); }
-void MainView::SetOnPlaylistVisibilityChanged(std::function<void()> handler) { m_onPlaylistVisibilityChanged = std::move(handler); }
 
 ATOM MainView::RegisterWindowClass(HINSTANCE hInstance) const
 {
@@ -666,14 +572,7 @@ void MainView::RegisterHelperClasses(HINSTANCE hInstance) const
     videoWc.lpszClassName = kVideoHostClassName;
     RegisterClassExW(&videoWc);
 
-    WNDCLASSEXW playlistWc{};
-    playlistWc.cbSize = sizeof(WNDCLASSEXW);
-    playlistWc.lpfnWndProc = MainView::PlaylistWndProc;
-    playlistWc.hInstance = hInstance;
-    playlistWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    playlistWc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
-    playlistWc.lpszClassName = kPlaylistClassName;
-    RegisterClassExW(&playlistWc);
+
 }
 
 HRESULT MainView::CreateDeviceIndependentResources()
@@ -818,114 +717,14 @@ LRESULT CALLBACK MainView::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
     return DefWindowProcW(hWnd, message, wParam, lParam);
 }
 
-LRESULT CALLBACK MainView::PlaylistWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    MainView* view = nullptr;
-
-    if (message == WM_NCCREATE)
-    {
-        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
-        view = static_cast<MainView*>(cs->lpCreateParams);
-        SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(view));
-    }
-    else
-    {
-        view = reinterpret_cast<MainView*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
-    }
-
-    if (view)
-    {
-        return view->HandlePlaylistMessage(hWnd, message, wParam, lParam);
-    }
-
-    return DefWindowProcW(hWnd, message, wParam, lParam);
-}
-
-LRESULT MainView::HandlePlaylistMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    switch (message)
-    {
-    case WM_CREATE:
-    {
-        HFONT hFont = FontHelper::GetNanumDialogFont();
-        m_playlistListBox = CreateWindowExW(
-            WS_EX_CLIENTEDGE,
-            L"LISTBOX",
-            nullptr,
-            WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_HASSTRINGS,
-            10, 10, 304, 320,
-            hWnd,
-            reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_LIST)),
-            m_hInstance,
-            nullptr);
-        SendMessageW(m_playlistListBox, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
-
-        HWND hPlay = CreateWindowExW(0, L"BUTTON", L"선택 재생", WS_CHILD | WS_VISIBLE,
-            10, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_PLAY)), m_hInstance, nullptr);
-        SendMessageW(hPlay, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
-
-        HWND hAdd = CreateWindowExW(0, L"BUTTON", L"파일 추가", WS_CHILD | WS_VISIBLE,
-            87, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_ADD)), m_hInstance, nullptr);
-        SendMessageW(hAdd, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
-
-        HWND hRemove = CreateWindowExW(0, L"BUTTON", L"선택 삭제", WS_CHILD | WS_VISIBLE,
-            164, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_REMOVE)), m_hInstance, nullptr);
-        SendMessageW(hRemove, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
-
-        HWND hClear = CreateWindowExW(0, L"BUTTON", L"비우기", WS_CHILD | WS_VISIBLE,
-            241, 340, 72, 28, hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_PL_CLEAR)), m_hInstance, nullptr);
-        SendMessageW(hClear, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
-        return 0;
-    }
-    case WM_COMMAND:
-    {
-        int id = LOWORD(wParam);
-        int code = HIWORD(wParam);
-        if ((id == IDC_PL_LIST && code == LBN_DBLCLK) || id == IDC_PL_PLAY)
-        {
-            int sel = static_cast<int>(SendMessageW(m_playlistListBox, LB_GETCURSEL, 0, 0));
-            if (sel != LB_ERR && m_onPlaylistPlayIndex)
-            {
-                m_onPlaylistPlayIndex(sel);
-            }
-            return 0;
-        }
-        if (id == IDC_PL_ADD && m_onPlaylistAddFiles)
-        {
-            m_onPlaylistAddFiles();
-            return 0;
-        }
-        if (id == IDC_PL_REMOVE && m_onPlaylistRemoveIndex)
-        {
-            int sel = static_cast<int>(SendMessageW(m_playlistListBox, LB_GETCURSEL, 0, 0));
-            if (sel != LB_ERR)
-            {
-                m_onPlaylistRemoveIndex(sel);
-            }
-            return 0;
-        }
-        if (id == IDC_PL_CLEAR && m_onPlaylistClear)
-        {
-            m_onPlaylistClear();
-            return 0;
-        }
-        break;
-    }
-    case WM_CLOSE:
-        ShowWindow(hWnd, SW_HIDE);
-        if (m_onPlaylistVisibilityChanged)
-        {
-            m_onPlaylistVisibilityChanged();
-        }
-        return 0;
-    }
-    return DefWindowProcW(hWnd, message, wParam, lParam);
-}
-
 LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
+    case WM_TIMER:
+        if (m_onTimer) m_onTimer(static_cast<UINT_PTR>(wParam));
+        return 0;
+
     case WM_COMMAND:
         OnCommand(LOWORD(wParam));
         return 0;
@@ -1000,6 +799,13 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
+    if (message == WM_NCDESTROY)
+    {
+        HWND hwnd = m_hWnd;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        m_hWnd = nullptr;
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+    }
     return DefWindowProcW(m_hWnd, message, wParam, lParam);
 }
 
@@ -1074,7 +880,7 @@ void MainView::OnCommand(int commandId)
         if (m_onTopMostToggled) m_onTopMostToggled();
         break;
     case IDM_VIEW_PLAYLIST:
-        TogglePlaylistWindow();
+        if (m_onPlaylistRequested) m_onPlaylistRequested();
         break;
     case IDM_VIEW_SETTINGS:
         if (m_onSettingsRequested) m_onSettingsRequested();

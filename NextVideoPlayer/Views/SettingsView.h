@@ -5,8 +5,8 @@
 class SettingsView : public ISettingsView
 {
 public:
-    SettingsView() = default;
-    ~SettingsView() override = default;
+    explicit SettingsView(HFONT dialogFont) : m_dialogFont(dialogFont) {}
+    ~SettingsView() override;
 
     bool ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConfig& initialConfig) override;
     AppConfig ReadFormValues(const AppConfig& baseConfig) const override;
@@ -25,6 +25,7 @@ private:
     bool m_done = false;
 
     HWND m_hWnd = nullptr;
+    HFONT m_dialogFont = nullptr;
     HWND m_hSeekEdit = nullptr;
     HWND m_hRepeatChk = nullptr;
     HWND m_hTopMostChk = nullptr;
@@ -33,4 +34,3 @@ private:
     std::function<void()> m_onSaveClicked;
     std::function<void()> m_onCancelClicked;
 };
-

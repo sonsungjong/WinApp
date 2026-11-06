@@ -8,6 +8,12 @@ SettingsPresenter::SettingsPresenter(ISettingsView& view, ConfigService& configS
     m_view.SetOnCancelClicked([this]() { OnCancelClicked(); });
 }
 
+SettingsPresenter::~SettingsPresenter()
+{
+    m_view.SetOnSaveClicked({});
+    m_view.SetOnCancelClicked({});
+}
+
 bool SettingsPresenter::ShowSettingsDialog(HINSTANCE hInstance, HWND parentHwnd, AppConfig& inOutConfig)
 {
     m_workingConfig = inOutConfig;
@@ -30,4 +36,3 @@ void SettingsPresenter::OnCancelClicked()
 {
     m_view.CloseModal(false);
 }
-

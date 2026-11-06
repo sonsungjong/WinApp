@@ -36,7 +36,7 @@ bool VideoModel::Initialize(HWND videoHwnd)
     mpv_set_option_string(m_mpv, "d3d11-flip", "no");
     mpv_set_option_string(m_mpv, "hwdec", "auto");
     mpv_set_option_string(m_mpv, "keep-open", "no");
-    mpv_set_option_string(m_mpv, "loop-file", m_isRepeatEnabled ? "inf" : "no");
+    mpv_set_option_string(m_mpv, "loop-file", "no");
     mpv_set_option_string(m_mpv, "sub-auto", "fuzzy");
     mpv_set_option_string(m_mpv, "sub-codepage", "auto");
     mpv_set_option_string(m_mpv, "input-default-bindings", "no");
@@ -60,23 +60,7 @@ bool VideoModel::Initialize(HWND videoHwnd)
 
 bool VideoModel::OpenFile(const std::wstring& filePath)
 {
-    if (!LoadFileInternal(filePath))
-    {
-        return false;
-    }
-
-    auto it = std::find(m_playlist.begin(), m_playlist.end(), filePath);
-    if (it == m_playlist.end())
-    {
-        m_playlist.push_back(filePath);
-        m_currentPlaylistIndex = static_cast<int>(m_playlist.size()) - 1;
-    }
-    else
-    {
-        m_currentPlaylistIndex = static_cast<int>(std::distance(m_playlist.begin(), it));
-    }
-
-    return true;
+    return LoadFileInternal(filePath);
 }
 
 bool VideoModel::LoadFileInternal(const std::wstring& filePath)
@@ -167,18 +151,12 @@ void VideoModel::ProcessEvents()
             auto* endFile = static_cast<mpv_event_end_file*>(event->data);
             if (endFile && endFile->reason == MPV_END_FILE_REASON_EOF)
             {
-                if (m_isRepeatEnabled)
-                {
-                    LoadFileInternal(m_filePath);
-                }
-                else if (m_currentPlaylistIndex + 1 < static_cast<int>(m_playlist.size()))
-                {
-                    PlayNext();
-                }
-                else
-                {
-                    m_state = PlaybackState::Stopped;
-                }
+                m_state = PlaybackState::Stopped;
+                if (m_onPlaybackEnded) m_onPlaybackEnded();
+            }
+            else if (endFile && endFile->reason == MPV_END_FILE_REASON_ERROR)
+            {
+                m_state = PlaybackState::Stopped;
             }
         }
     }
@@ -291,11 +269,8 @@ double VideoModel::GetSpeed() const
 
 void VideoModel::SetRepeat(bool enabled)
 {
+    // PlaylistPresenter applies repeat to the active playback queue.
     m_isRepeatEnabled = enabled;
-    if (m_mpv)
-    {
-        mpv_set_property_string(m_mpv, "loop-file", enabled ? "inf" : "no");
-    }
 }
 
 bool VideoModel::IsRepeatEnabled() const
@@ -423,106 +398,9 @@ bool VideoModel::TakeScreenshot(const std::wstring& filePath)
     return mpv_command(m_mpv, cmd) >= 0;
 }
 
-void VideoModel::AddToPlaylist(const std::wstring& filePath)
+void VideoModel::SetOnPlaybackEnded(std::function<void()> handler)
 {
-    if (filePath.empty())
-    {
-        return;
-    }
-
-    if (std::find(m_playlist.begin(), m_playlist.end(), filePath) == m_playlist.end())
-    {
-        m_playlist.push_back(filePath);
-    }
-}
-
-void VideoModel::RemoveFromPlaylist(int index)
-{
-    if (index < 0 || index >= static_cast<int>(m_playlist.size()))
-    {
-        return;
-    }
-
-    m_playlist.erase(m_playlist.begin() + index);
-    if (m_currentPlaylistIndex == index)
-    {
-        m_currentPlaylistIndex = -1;
-    }
-    else if (m_currentPlaylistIndex > index)
-    {
-        --m_currentPlaylistIndex;
-    }
-}
-
-void VideoModel::ClearPlaylist()
-{
-    m_playlist.clear();
-    m_currentPlaylistIndex = -1;
-}
-
-bool VideoModel::PlayPlaylistIndex(int index)
-{
-    if (index < 0 || index >= static_cast<int>(m_playlist.size()))
-    {
-        return false;
-    }
-
-    if (!LoadFileInternal(m_playlist[index]))
-    {
-        return false;
-    }
-
-    m_currentPlaylistIndex = index;
-    return true;
-}
-
-bool VideoModel::PlayNext()
-{
-    if (m_playlist.empty())
-    {
-        return false;
-    }
-
-    int nextIndex = m_currentPlaylistIndex + 1;
-    if (nextIndex >= static_cast<int>(m_playlist.size()))
-    {
-        if (m_isRepeatEnabled)
-        {
-            nextIndex = 0;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    return PlayPlaylistIndex(nextIndex);
-}
-
-bool VideoModel::PlayPrevious()
-{
-    if (m_playlist.empty())
-    {
-        return false;
-    }
-
-    int prevIndex = m_currentPlaylistIndex - 1;
-    if (prevIndex < 0)
-    {
-        prevIndex = 0;
-    }
-
-    return PlayPlaylistIndex(prevIndex);
-}
-
-const std::vector<std::wstring>& VideoModel::GetPlaylist() const
-{
-    return m_playlist;
-}
-
-int VideoModel::GetCurrentPlaylistIndex() const
-{
-    return m_currentPlaylistIndex;
+    m_onPlaybackEnded = std::move(handler);
 }
 
 PlaybackState VideoModel::GetState() const

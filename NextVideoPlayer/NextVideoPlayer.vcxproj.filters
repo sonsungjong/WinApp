@@ -16,6 +16,21 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Views\FileDialogs.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Presenters\PlaylistPresenter.h">
+      <Filter>Presenters</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\PlaylistView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\IPlaylistView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Models\PlaylistModel.h">
+      <Filter>Models</Filter>
+    </ClInclude>
     <ClInclude Include="framework.h" />
     <ClInclude Include="App.h" />
     <ClInclude Include="Resource.h" />
@@ -67,6 +82,15 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Presenters\PlaylistPresenter.cpp">
+      <Filter>Presenters</Filter>
+    </ClCompile>
+    <ClCompile Include="Views\PlaylistView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="Models\PlaylistModel.cpp">
+      <Filter>Models</Filter>
+    </ClCompile>
     <ClCompile Include="App.cpp" />
     <ClCompile Include="Models\ConfigService.cpp">
       <Filter>Models</Filter>

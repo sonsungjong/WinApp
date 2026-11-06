@@ -37,38 +37,25 @@ namespace FontHelper
         return found;
     }
 
-    void EnsureBundledFontsLoaded()
+    Resources::Resources()
     {
-        static bool s_loaded = false;
-        if (s_loaded)
+        for (const auto& path : GetBundledFontPaths())
         {
-            return;
+            if (AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr) > 0)
+                m_loadedFonts.push_back(path);
         }
-        s_loaded = true;
-
-        std::vector<std::wstring> fontPaths = GetBundledFontPaths();
-        for (const auto& path : fontPaths)
-        {
-            AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
-        }
+        m_font = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"NanumSquare");
+        m_ownsFont = m_font != nullptr;
+        if (!m_font) m_font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
     }
 
-    HFONT GetNanumDialogFont()
+    Resources::~Resources()
     {
-        EnsureBundledFontsLoaded();
-        static HFONT s_hFont = nullptr;
-        if (!s_hFont)
-        {
-            s_hFont = CreateFontW(
-                -13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"NanumSquare");
-            if (!s_hFont)
-            {
-                s_hFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-            }
-        }
-        return s_hFont;
+        if (m_ownsFont) DeleteObject(m_font);
+        for (const auto& path : m_loadedFonts)
+            RemoveFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
     }
 
     void CreateCustomFontCollection(
@@ -76,7 +63,6 @@ namespace FontHelper
         Microsoft::WRL::ComPtr<IDWriteFontCollection1>& outCollection,
         const wchar_t*& outKoreanFontName)
     {
-        EnsureBundledFontsLoaded();
         std::vector<std::wstring> fontPaths = GetBundledFontPaths();
 
         Microsoft::WRL::ComPtr<IDWriteFactory5> dwriteFactory5;

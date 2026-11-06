@@ -54,14 +54,7 @@ public:
 
     virtual bool TakeScreenshot(const std::wstring& filePath) = 0;
 
-    virtual void AddToPlaylist(const std::wstring& filePath) = 0;
-    virtual void RemoveFromPlaylist(int index) = 0;
-    virtual void ClearPlaylist() = 0;
-    virtual bool PlayPlaylistIndex(int index) = 0;
-    virtual bool PlayNext() = 0;
-    virtual bool PlayPrevious() = 0;
-    virtual const std::vector<std::wstring>& GetPlaylist() const = 0;
-    virtual int GetCurrentPlaylistIndex() const = 0;
+    virtual void SetOnPlaybackEnded(std::function<void()> handler) = 0;
 
     virtual PlaybackState GetState() const = 0;
     virtual const std::wstring& GetFilePath() const = 0;

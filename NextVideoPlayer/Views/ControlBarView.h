@@ -10,7 +10,7 @@ class ControlBarView : public IControlBarView
 {
 public:
     ControlBarView() = default;
-    ~ControlBarView() override = default;
+    ~ControlBarView() override;
 
     bool Initialize(HINSTANCE hInstance, HWND parentHwnd, int x, int y, int width, int height) override;
     HWND GetHwnd() const override;
@@ -51,6 +51,7 @@ private:
 
     void OnLButtonDown(float x, float y);
     void OnLButtonUp(float x, float y);
+    void CancelDrag();
     void OnMouseMove(float x, float y);
     void OnMouseLeave();
     void SeekFromMouseX(float x);
@@ -118,4 +119,3 @@ private:
     std::function<void()> m_onPlaylistRequested;
     std::function<void()> m_onSettingsRequested;
 };
-

@@ -2,13 +2,45 @@
 #include "App.h"
 #include "Models/ConfigService.h"
 #include "Models/ControlBarModel.h"
+#include "Models/PlaylistModel.h"
 #include "Models/VideoModel.h"
 #include "Presenters/ControlBarPresenter.h"
 #include "Presenters/MainPresenter.h"
+#include "Presenters/PlaylistPresenter.h"
 #include "Presenters/SettingsPresenter.h"
 #include "Views/ControlBarView.h"
+#include "Views/FontHelper.h"
 #include "Views/MainView.h"
+#include "Views/PlaylistView.h"
 #include "Views/SettingsView.h"
+
+namespace
+{
+    class ComApartment
+    {
+    public:
+        ComApartment() : m_result(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)) {}
+        ~ComApartment() { if (SUCCEEDED(m_result)) CoUninitialize(); }
+        ComApartment(const ComApartment&) = delete;
+        ComApartment& operator=(const ComApartment&) = delete;
+        bool IsInitialized() const { return SUCCEEDED(m_result); }
+    private:
+        HRESULT m_result;
+    };
+
+    class AppTimer
+    {
+    public:
+        explicit AppTimer(HWND hwnd) : m_hwnd(hwnd), m_id(SetTimer(hwnd, 1, 33, nullptr)) {}
+        ~AppTimer() { if (m_id && IsWindow(m_hwnd)) KillTimer(m_hwnd, m_id); }
+        AppTimer(const AppTimer&) = delete;
+        AppTimer& operator=(const AppTimer&) = delete;
+        UINT_PTR GetId() const { return m_id; }
+    private:
+        HWND m_hwnd;
+        UINT_PTR m_id;
+    };
+}
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -18,76 +50,43 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)))
+    // Constructed first, so COM outlives every view and its COM interfaces.
+    ComApartment com;
+    if (!com.IsInitialized()) return 1;
+    FontHelper::Resources fonts;
+
+    ConfigService configService;
+    AppConfig config = configService.Load();
+    VideoModel videoModel;
+    ControlBarModel controlBarModel;
+    PlaylistModel playlistModel;
+
+    ControlBarView controlBarView;
+    SettingsView settingsView(fonts.GetDialogFont());
+    PlaylistView playlistView(fonts.GetDialogFont());
+    MainView mainView(controlBarView);
+    if (!mainView.Initialize(hInstance)) return 1;
+
+    ControlBarPresenter controlBarPresenter(controlBarView, controlBarModel, videoModel);
+    SettingsPresenter settingsPresenter(settingsView, configService);
+    PlaylistPresenter playlistPresenter(playlistView, playlistModel, videoModel);
+    MainPresenter mainPresenter(mainView, videoModel, config, configService,
+        controlBarPresenter, settingsPresenter, playlistPresenter);
+    if (!mainPresenter.Initialize()) return 1;
+
+    // Window timers are also dispatched by native modal dialogs' message loops.
+    AppTimer timer(mainView.GetHwnd());
+    if (!timer.GetId()) return 1;
+    mainView.SetOnTimer([&](UINT_PTR id) { if (id == timer.GetId()) mainPresenter.Tick(); });
+    mainView.Show(nCmdShow);
+
+    MSG message{};
+    BOOL result = 0;
+    while ((result = GetMessageW(&message, nullptr, 0, 0)) > 0)
     {
-        return FALSE;
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
     }
-
-    int exitCode = 0;
-    {
-        // Models
-        ConfigService configService;
-        VideoModel videoModel;
-        ControlBarModel controlBarModel;
-
-        // Views
-        ControlBarView controlBarView;
-        SettingsView settingsView;
-        MainView mainView(controlBarView);
-
-        if (!mainView.Initialize(hInstance))
-        {
-            CoUninitialize();
-            return FALSE;
-        }
-
-        // Presenters
-        ControlBarPresenter controlBarPresenter(controlBarView, controlBarModel);
-        SettingsPresenter settingsPresenter(settingsView, configService);
-        MainPresenter mainPresenter(mainView, videoModel, configService, controlBarPresenter, settingsPresenter);
-
-        if (!mainPresenter.Initialize())
-        {
-            CoUninitialize();
-            return FALSE;
-        }
-
-        mainView.Show(nCmdShow);
-
-        MSG msg{};
-        bool running = true;
-        while (running)
-        {
-            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
-            {
-                if (msg.message == WM_QUIT)
-                {
-                    exitCode = static_cast<int>(msg.wParam);
-                    running = false;
-                    break;
-                }
-
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-
-            if (!running)
-            {
-                break;
-            }
-
-            if (mainPresenter.IsActiveLoop())
-            {
-                mainPresenter.Tick();
-                MsgWaitForMultipleObjectsEx(0, nullptr, 33, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-            }
-            else
-            {
-                WaitMessage();
-            }
-        }
-    }
-
-    CoUninitialize();
-    return exitCode;
+    mainView.SetOnTimer({});
+    return result == -1 ? 1 : static_cast<int>(message.wParam);
 }

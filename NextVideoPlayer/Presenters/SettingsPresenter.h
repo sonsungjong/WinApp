@@ -7,7 +7,7 @@ class SettingsPresenter
 {
 public:
     SettingsPresenter(ISettingsView& view, ConfigService& configService);
-    ~SettingsPresenter() = default;
+    ~SettingsPresenter();
 
     bool ShowSettingsDialog(HINSTANCE hInstance, HWND parentHwnd, AppConfig& inOutConfig);
 
@@ -19,4 +19,3 @@ private:
     ConfigService& m_configService;
     AppConfig m_workingConfig{};
 };
-

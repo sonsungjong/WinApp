@@ -50,14 +50,7 @@ public:
 
     bool TakeScreenshot(const std::wstring& filePath) override;
 
-    void AddToPlaylist(const std::wstring& filePath) override;
-    void RemoveFromPlaylist(int index) override;
-    void ClearPlaylist() override;
-    bool PlayPlaylistIndex(int index) override;
-    bool PlayNext() override;
-    bool PlayPrevious() override;
-    const std::vector<std::wstring>& GetPlaylist() const override;
-    int GetCurrentPlaylistIndex() const override;
+    void SetOnPlaybackEnded(std::function<void()> handler) override;
 
     PlaybackState GetState() const override;
     const std::wstring& GetFilePath() const override;
@@ -84,6 +77,5 @@ private:
     double m_subtitleScale = 1.0;
     int m_subtitlePos = 100;
 
-    std::vector<std::wstring> m_playlist;
-    int m_currentPlaylistIndex = -1;
+    std::function<void()> m_onPlaybackEnded;
 };

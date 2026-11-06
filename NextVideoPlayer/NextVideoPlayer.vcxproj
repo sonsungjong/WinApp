@@ -177,6 +177,11 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Views\FileDialogs.h" />
+    <ClInclude Include="Presenters\PlaylistPresenter.h" />
+    <ClInclude Include="Views\PlaylistView.h" />
+    <ClInclude Include="Views\IPlaylistView.h" />
+    <ClInclude Include="Models\PlaylistModel.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="App.h" />
     <ClInclude Include="Models\AppConfig.h" />
@@ -198,6 +203,9 @@
     <ClInclude Include="Views\SettingsView.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Presenters\PlaylistPresenter.cpp" />
+    <ClCompile Include="Views\PlaylistView.cpp" />
+    <ClCompile Include="Models\PlaylistModel.cpp" />
     <ClCompile Include="Models\ConfigService.cpp" />
     <ClCompile Include="Models\ControlBarModel.cpp" />
     <ClCompile Include="Models\VideoModel.cpp" />

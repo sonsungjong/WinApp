@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -191,6 +191,7 @@
     <ClInclude Include="Models\VideoModel.h" />
     <ClInclude Include="Presenters\ControlBarPresenter.h" />
     <ClInclude Include="Presenters\MainPresenter.h" />
+    <ClInclude Include="Presenters\VideoPlayerPresenter.h" />
     <ClInclude Include="Presenters\SettingsPresenter.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
@@ -198,8 +199,10 @@
     <ClInclude Include="Views\FontHelper.h" />
     <ClInclude Include="Views\IControlBarView.h" />
     <ClInclude Include="Views\IMainView.h" />
+    <ClInclude Include="Views\IVideoPlayerView.h" />
     <ClInclude Include="Views\ISettingsView.h" />
     <ClInclude Include="Views\MainView.h" />
+    <ClInclude Include="Views\VideoPlayerView.h" />
     <ClInclude Include="Views\SettingsView.h" />
   </ItemGroup>
   <ItemGroup>
@@ -212,10 +215,12 @@
     <ClCompile Include="App.cpp" />
     <ClCompile Include="Presenters\ControlBarPresenter.cpp" />
     <ClCompile Include="Presenters\MainPresenter.cpp" />
+    <ClCompile Include="Presenters\VideoPlayerPresenter.cpp" />
     <ClCompile Include="Presenters\SettingsPresenter.cpp" />
     <ClCompile Include="Views\ControlBarView.cpp" />
     <ClCompile Include="Views\FontHelper.cpp" />
     <ClCompile Include="Views\MainView.cpp" />
+    <ClCompile Include="Views\VideoPlayerView.cpp" />
     <ClCompile Include="Views\SettingsView.cpp" />
   </ItemGroup>
   <ItemGroup>

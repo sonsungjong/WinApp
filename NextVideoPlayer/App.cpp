@@ -8,11 +8,13 @@
 #include "Presenters/MainPresenter.h"
 #include "Presenters/PlaylistPresenter.h"
 #include "Presenters/SettingsPresenter.h"
+#include "Presenters/VideoPlayerPresenter.h"
 #include "Views/ControlBarView.h"
 #include "Views/FontHelper.h"
 #include "Views/MainView.h"
 #include "Views/PlaylistView.h"
 #include "Views/SettingsView.h"
+#include "Views/VideoPlayerView.h"
 
 namespace
 {
@@ -50,7 +52,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // Constructed first, so COM outlives every view and its COM interfaces.
     ComApartment com;
     if (!com.IsInitialized()) return 1;
     FontHelper::Resources fonts;
@@ -64,17 +65,22 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     ControlBarView controlBarView;
     SettingsView settingsView(fonts.GetDialogFont());
     PlaylistView playlistView(fonts.GetDialogFont());
-    MainView mainView(controlBarView);
+    MainView mainView;
+    VideoPlayerView videoPlayerView(controlBarView);
+
     if (!mainView.Initialize(hInstance)) return 1;
+    if (!videoPlayerView.Initialize(hInstance, mainView.GetHwnd())) return 1;
+    mainView.SetPlayerHwnd(videoPlayerView.GetHwnd());
 
     ControlBarPresenter controlBarPresenter(controlBarView, controlBarModel, videoModel);
     SettingsPresenter settingsPresenter(settingsView, configService);
     PlaylistPresenter playlistPresenter(playlistView, playlistModel, videoModel);
-    MainPresenter mainPresenter(mainView, videoModel, config, configService,
+    VideoPlayerPresenter videoPlayerPresenter(
+        videoPlayerView, mainView, videoModel, config, configService,
         controlBarPresenter, settingsPresenter, playlistPresenter);
+    MainPresenter mainPresenter(mainView, videoPlayerPresenter);
     if (!mainPresenter.Initialize()) return 1;
 
-    // Window timers are also dispatched by native modal dialogs' message loops.
     AppTimer timer(mainView.GetHwnd());
     if (!timer.GetId()) return 1;
     mainView.SetOnTimer([&](UINT_PTR id) { if (id == timer.GetId()) mainPresenter.Tick(); });

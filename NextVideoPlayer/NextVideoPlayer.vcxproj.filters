@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Models">
@@ -62,10 +62,16 @@
     <ClInclude Include="Views\IMainView.h">
       <Filter>Views</Filter>
     </ClInclude>
+    <ClInclude Include="Views\IVideoPlayerView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
     <ClInclude Include="Views\ISettingsView.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="Views\MainView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\VideoPlayerView.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="Views\SettingsView.h">
@@ -75,6 +81,9 @@
       <Filter>Presenters</Filter>
     </ClInclude>
     <ClInclude Include="Presenters\MainPresenter.h">
+      <Filter>Presenters</Filter>
+    </ClInclude>
+    <ClInclude Include="Presenters\VideoPlayerPresenter.h">
       <Filter>Presenters</Filter>
     </ClInclude>
     <ClInclude Include="Presenters\SettingsPresenter.h">
@@ -110,6 +119,9 @@
     <ClCompile Include="Views\MainView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="Views\VideoPlayerView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="Views\SettingsView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -117,6 +129,9 @@
       <Filter>Presenters</Filter>
     </ClCompile>
     <ClCompile Include="Presenters\MainPresenter.cpp">
+      <Filter>Presenters</Filter>
+    </ClCompile>
+    <ClCompile Include="Presenters\VideoPlayerPresenter.cpp">
       <Filter>Presenters</Filter>
     </ClCompile>
     <ClCompile Include="Presenters\SettingsPresenter.cpp">

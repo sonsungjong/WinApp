@@ -11,6 +11,7 @@ GPU 가속을 통한 배속 지원 가능해야함
 - libass (ISC)
 - libplacebo (LGPLv2.1+)
 - uchardet (MPL 1.1 / LGPLv2.1+)
+- [cJSON v1.7.19](https://github.com/DaveGamble/cJSON/tree/v1.7.19) (MIT, `ThirdParty/cJSON` 소스 포함)
 
 
 ## 향후 개발 항목 (TODO)

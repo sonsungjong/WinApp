@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Filter Include="ThirdParty">
+      <UniqueIdentifier>{A1B2C3D4-4444-4000-8000-000000000004}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\cJSON">
+      <UniqueIdentifier>{A1B2C3D4-5555-4000-8000-000000000005}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Models">
       <UniqueIdentifier>{A1B2C3D4-1111-4000-8000-000000000001}</UniqueIdentifier>
     </Filter>
@@ -16,6 +22,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ThirdParty\cJSON\cJSON.h">
+      <Filter>ThirdParty\cJSON</Filter>
+    </ClInclude>
     <ClInclude Include="Views\FileDialogs.h">
       <Filter>Views</Filter>
     </ClInclude>
@@ -94,6 +103,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="ThirdParty\cJSON\cJSON.c">
+      <Filter>ThirdParty\cJSON</Filter>
+    </ClCompile>
     <ClCompile Include="Presenters\PlaylistPresenter.cpp">
       <Filter>Presenters</Filter>
     </ClCompile>
@@ -155,6 +167,9 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
+    <None Include="ThirdParty\cJSON\LICENSE">
+      <Filter>ThirdParty\cJSON</Filter>
+    </None>
     <None Include="LICENSE.txt" />
     <None Include="Readme.md" />
     <None Include="setup_sdk.bat" />

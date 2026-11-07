@@ -16,7 +16,7 @@ public:
     void SetVolume(int volume);
     void StepVolume(int delta);
     void ToggleMute();
-    void StepSpeed(double delta);
+    void StepSpeed(int direction);
     void ResetSpeed();
     void ToggleRepeat();
     void SetABLoop(int action);

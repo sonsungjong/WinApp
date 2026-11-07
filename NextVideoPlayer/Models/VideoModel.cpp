@@ -1,4 +1,5 @@
 #include "Models/VideoModel.h"
+#include "Models/PlaybackSpeed.h"
 #include <algorithm>
 #include <clocale>
 #include <mpv/client.h>
@@ -273,7 +274,7 @@ bool VideoModel::IsMuted() const
 
 void VideoModel::SetSpeed(double speed)
 {
-    m_speed = std::clamp(speed, 0.25, 4.0);
+    m_speed = PlaybackSpeed::Clamp(speed);
     if (m_mpv)
     {
         mpv_set_property(m_mpv, "speed", MPV_FORMAT_DOUBLE, &m_speed);

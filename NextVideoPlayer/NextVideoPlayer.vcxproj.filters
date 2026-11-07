@@ -38,6 +38,9 @@
     <ClInclude Include="Models\AppConfig.h">
       <Filter>Models</Filter>
     </ClInclude>
+    <ClInclude Include="Models\PlaybackSpeed.h">
+      <Filter>Models</Filter>
+    </ClInclude>
     <ClInclude Include="Models\ConfigService.h">
       <Filter>Models</Filter>
     </ClInclude>

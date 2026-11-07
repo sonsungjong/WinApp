@@ -1,4 +1,5 @@
 #include "Models/ConfigService.h"
+#include "Models/PlaybackSpeed.h"
 #include <algorithm>
 #include <cwchar>
 #include <filesystem>
@@ -36,7 +37,7 @@ AppConfig ConfigService::Load() const
     WCHAR speedBuf[32]{};
     GetPrivateProfileStringW(L"Playback", L"Speed", L"1.0", speedBuf, 32, m_configPath.c_str());
     double parsedSpeed = _wtof(speedBuf);
-    if (parsedSpeed >= 0.25 && parsedSpeed <= 4.0)
+    if (parsedSpeed >= PlaybackSpeed::kMinimum && parsedSpeed <= PlaybackSpeed::kMaximum)
     {
         config.speed = parsedSpeed;
     }

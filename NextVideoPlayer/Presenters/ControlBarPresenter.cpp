@@ -1,4 +1,5 @@
 #include "Presenters/ControlBarPresenter.h"
+#include "Models/PlaybackSpeed.h"
 
 ControlBarPresenter::ControlBarPresenter(IControlBarView& view, ControlBarModel& model, IVideoModel& video)
     : m_view(view), m_model(model), m_video(video) {}
@@ -29,7 +30,7 @@ void ControlBarPresenter::Initialize()
     m_view.SetOnSeekAbsolute([this](double seconds) { SeekAbsolute(seconds); });
     m_view.SetOnVolumeChanged([this](int volume) { SetVolume(volume); });
     m_view.SetOnMuteToggled([this]() { ToggleMute(); });
-    m_view.SetOnSpeedStep([this](double delta) { StepSpeed(delta); });
+    m_view.SetOnSpeedStep([this](int direction) { StepSpeed(direction); });
     m_view.SetOnSpeedReset([this]() { ResetSpeed(); });
     m_view.SetOnRepeatToggled([this]() { ToggleRepeat(); });
     m_view.SetOnSubtitleToggle([this]() { ToggleSubtitle(); });
@@ -79,7 +80,7 @@ void ControlBarPresenter::SeekRelative(double seconds) { m_video.SeekRelative(se
 void ControlBarPresenter::SetVolume(int volume) { m_video.SetMuted(false); m_video.SetVolume(volume); Notify(true); }
 void ControlBarPresenter::StepVolume(int delta) { SetVolume(m_video.GetVolume() + delta); }
 void ControlBarPresenter::ToggleMute() { m_video.SetMuted(!m_video.IsMuted()); Notify(true); }
-void ControlBarPresenter::StepSpeed(double delta) { m_video.SetSpeed(m_video.GetSpeed() + delta); Notify(true); }
+void ControlBarPresenter::StepSpeed(int direction) { m_video.SetSpeed(PlaybackSpeed::Step(m_video.GetSpeed(), direction)); Notify(true); }
 void ControlBarPresenter::ResetSpeed() { m_video.SetSpeed(1.0); Notify(true); }
 void ControlBarPresenter::ToggleRepeat() { m_video.SetRepeat(!m_video.IsRepeatEnabled()); Notify(true); }
 void ControlBarPresenter::ToggleSubtitle() { m_video.SetSubtitleVisible(!m_video.IsSubtitleVisible()); Notify(true); }

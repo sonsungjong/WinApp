@@ -185,6 +185,7 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="App.h" />
     <ClInclude Include="Models\AppConfig.h" />
+    <ClInclude Include="Models\PlaybackSpeed.h" />
     <ClInclude Include="Models\ConfigService.h" />
     <ClInclude Include="Models\ControlBarModel.h" />
     <ClInclude Include="Models\IVideoModel.h" />

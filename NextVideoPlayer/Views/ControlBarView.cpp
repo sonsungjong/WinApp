@@ -142,7 +142,7 @@ void ControlBarView::SetOnNextRequested(std::function<void()> handler) { m_onNex
 void ControlBarView::SetOnSeekAbsolute(std::function<void(double)> handler) { m_onSeekAbsolute = std::move(handler); }
 void ControlBarView::SetOnVolumeChanged(std::function<void(int)> handler) { m_onVolumeChanged = std::move(handler); }
 void ControlBarView::SetOnMuteToggled(std::function<void()> handler) { m_onMuteToggled = std::move(handler); }
-void ControlBarView::SetOnSpeedStep(std::function<void(double)> handler) { m_onSpeedStep = std::move(handler); }
+void ControlBarView::SetOnSpeedStep(std::function<void(int)> handler) { m_onSpeedStep = std::move(handler); }
 void ControlBarView::SetOnSpeedReset(std::function<void()> handler) { m_onSpeedReset = std::move(handler); }
 void ControlBarView::SetOnRepeatToggled(std::function<void()> handler) { m_onRepeatToggled = std::move(handler); }
 void ControlBarView::SetOnSubtitleToggle(std::function<void()> handler) { m_onSubtitleToggle = std::move(handler); }
@@ -531,16 +531,16 @@ void ControlBarView::Draw(HDC hdc)
     DrawButton(m_btnRepeat, L"\uE8EE", m_iconTextFormat.Get(), m_state.repeatEnabled);
     rightX -= 46.0f;
 
-    // Speed controls (+, 1.0x, -) in Segoe UI
+    // Speed controls (+, 1.00x, -) in Segoe UI
     m_btnSpeedPlus = D2D1::RectF(rightX - 28.0f, rowTop + 2.0f, rightX, rowBottom - 2.0f);
     DrawButton(m_btnSpeedPlus, L"+", m_speedTextFormat.Get(), false);
     rightX -= 32.0f;
 
     WCHAR speedBuf[32]{};
-    swprintf_s(speedBuf, L"%.1fx", m_state.speed);
-    m_btnSpeedReset = D2D1::RectF(rightX - 46.0f, rowTop + 2.0f, rightX, rowBottom - 2.0f);
+    swprintf_s(speedBuf, L"%.2fx", m_state.speed);
+    m_btnSpeedReset = D2D1::RectF(rightX - 60.0f, rowTop + 2.0f, rightX, rowBottom - 2.0f);
     DrawButton(m_btnSpeedReset, speedBuf, m_speedTextFormat.Get(), std::abs(m_state.speed - 1.0) > 0.04);
-    rightX -= 50.0f;
+    rightX -= 64.0f;
 
     m_btnSpeedMinus = D2D1::RectF(rightX - 28.0f, rowTop + 2.0f, rightX, rowBottom - 2.0f);
     DrawButton(m_btnSpeedMinus, L"-", m_speedTextFormat.Get(), false);
@@ -748,9 +748,9 @@ void ControlBarView::OnLButtonDown(float x, float y)
     else if (PtInRectF(m_btnPrev, x, y) && m_onPrevRequested) m_onPrevRequested();
     else if (PtInRectF(m_btnNext, x, y) && m_onNextRequested) m_onNextRequested();
     else if (PtInRectF(m_btnMute, x, y) && m_onMuteToggled) m_onMuteToggled();
-    else if (PtInRectF(m_btnSpeedMinus, x, y) && m_onSpeedStep) m_onSpeedStep(-0.1);
+    else if (PtInRectF(m_btnSpeedMinus, x, y) && m_onSpeedStep) m_onSpeedStep(-1);
     else if (PtInRectF(m_btnSpeedReset, x, y) && m_onSpeedReset) m_onSpeedReset();
-    else if (PtInRectF(m_btnSpeedPlus, x, y) && m_onSpeedStep) m_onSpeedStep(0.1);
+    else if (PtInRectF(m_btnSpeedPlus, x, y) && m_onSpeedStep) m_onSpeedStep(1);
     else if (PtInRectF(m_btnRepeat, x, y) && m_onRepeatToggled) m_onRepeatToggled();
     else if (PtInRectF(m_btnSub, x, y) && m_onSubtitleToggle) m_onSubtitleToggle();
     else if (PtInRectF(m_btnPlaylist, x, y) && m_onPlaylistRequested) m_onPlaylistRequested();

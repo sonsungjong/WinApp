@@ -28,7 +28,7 @@ public:
     void SetOnSeekAbsolute(std::function<void(double)> handler) override;
     void SetOnVolumeChanged(std::function<void(int)> handler) override;
     void SetOnMuteToggled(std::function<void()> handler) override;
-    void SetOnSpeedStep(std::function<void(double)> handler) override;
+    void SetOnSpeedStep(std::function<void(int)> handler) override;
     void SetOnSpeedReset(std::function<void()> handler) override;
     void SetOnRepeatToggled(std::function<void()> handler) override;
     void SetOnSubtitleToggle(std::function<void()> handler) override;
@@ -112,7 +112,7 @@ private:
     std::function<void(double)> m_onSeekAbsolute;
     std::function<void(int)> m_onVolumeChanged;
     std::function<void()> m_onMuteToggled;
-    std::function<void(double)> m_onSpeedStep;
+    std::function<void(int)> m_onSpeedStep;
     std::function<void()> m_onSpeedReset;
     std::function<void()> m_onRepeatToggled;
     std::function<void()> m_onSubtitleToggle;

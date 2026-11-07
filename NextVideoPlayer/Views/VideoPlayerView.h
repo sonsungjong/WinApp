@@ -77,7 +77,7 @@ private:
     bool IsCursorAutoHideEnabled() const;
     void RestartCursorHideTimer();
     void ResetCursorAutoHide();
-    void OnCursorMouseMove(LPARAM lParam);
+    void OnCursorActivity();
     void OnCursorHideTimer();
 
     IControlBarView& m_controlBarView;

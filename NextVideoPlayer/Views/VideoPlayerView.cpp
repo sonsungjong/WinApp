@@ -9,7 +9,7 @@ namespace
 {
     constexpr int kControlBarHeight = IControlBarView::kDefaultHeight;
     constexpr UINT_PTR kCursorHideTimerId = 1;
-    constexpr UINT kCursorHideDelayMs = 3000;
+    constexpr UINT kCursorHideDelayMs = 2000;
     constexpr wchar_t kPlayerClassName[] = L"NextVideoPlayer_VideoPlayerWnd";
     constexpr wchar_t kVideoHostClassName[] = L"NextVideoPlayer_VideoHostWnd";
 
@@ -247,10 +247,14 @@ void VideoPlayerView::RestartCursorHideTimer()
     if (!m_isCursorTimerArmed) m_cursorHideDue = 0;
 }
 
-void VideoPlayerView::OnCursorMouseMove(LPARAM lParam)
+void VideoPlayerView::OnCursorActivity()
 {
-    POINT position{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-    if (!ClientToScreen(m_hWnd, &position)) return;
+    POINT position{};
+    if (!GetCursorPos(&position))
+    {
+        ResetCursorAutoHide();
+        return;
+    }
     // Repaints can generate mouse messages without a physical mouse movement.
     if (!m_hasCursorPosition || position.x != m_lastCursorPosition.x || position.y != m_lastCursorPosition.y)
         RestartCursorHideTimer();
@@ -623,16 +627,24 @@ LRESULT VideoPlayerView::HandleMessage(UINT message, WPARAM wParam, LPARAM lPara
         }
         break;
     case WM_MOUSEMOVE:
-        OnCursorMouseMove(lParam);
+        OnCursorActivity();
         return 0;
     case WM_MOUSELEAVE:
         m_isTrackingCursor = false;
-        m_hasCursorPosition = false;
-        RestartCursorHideTimer();
+        // A render child can trigger its parent's leave notification. Preserve
+        // the idle deadline and wait for actual movement before tracking again.
+        if (!IsCursorOverVideo())
+        {
+            m_hasCursorPosition = false;
+            ResetCursorAutoHide();
+        }
         return 0;
     case WM_SETCURSOR:
-        if (LOWORD(lParam) == HTCLIENT && IsVideoWindow(reinterpret_cast<HWND>(wParam)))
+        if (LOWORD(lParam) == HTCLIENT && HIWORD(lParam) && IsVideoWindow(reinterpret_cast<HWND>(wParam)))
         {
+            // Child render windows receive WM_MOUSEMOVE themselves, but their
+            // cursor requests propagate to the player through DefWindowProc.
+            OnCursorActivity();
             if (m_isCursorHidden)
             {
                 if (IsCursorAutoHideEnabled() && GetForegroundWindow() == GetOwnerHwnd() && IsCursorOverVideo())

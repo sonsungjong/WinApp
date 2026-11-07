@@ -362,5 +362,5 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-libmpv-2.dll
 NextVideoPlayerD.exe
+NextVideoPlayer/ThirdParty/libmpv/libmpv-2.dll

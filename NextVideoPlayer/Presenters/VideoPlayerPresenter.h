@@ -21,6 +21,7 @@ public:
     void HandleShellMouseWheel(int delta);
     void HandleShellDropFiles(HDROP hDrop);
     void OnShellFullscreenChanged(bool fullscreen);
+    void OnShellActivationChanged(bool active);
 
 private:
     void ApplyConfig();

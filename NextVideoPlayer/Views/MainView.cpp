@@ -231,6 +231,7 @@ void MainView::SetOnKeyDown(std::function<void(WPARAM)> handler) { m_onKeyDown =
 void MainView::SetOnMouseWheel(std::function<void(int)> handler) { m_onMouseWheel = std::move(handler); }
 void MainView::SetOnFilesDropped(std::function<void(HDROP)> handler) { m_onFilesDropped = std::move(handler); }
 void MainView::SetOnFullscreenChanged(std::function<void(bool)> handler) { m_onFullscreenChanged = std::move(handler); }
+void MainView::SetOnActivationChanged(std::function<void(bool)> handler) { m_onActivationChanged = std::move(handler); }
 
 ATOM MainView::RegisterWindowClass(HINSTANCE hInstance) const
 {
@@ -345,6 +346,10 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     case WM_LBUTTONDBLCLK:
         ToggleFullscreen();
         return 0;
+
+    case WM_ACTIVATE:
+        if (m_onActivationChanged) m_onActivationChanged(LOWORD(wParam) != WA_INACTIVE);
+        break;
 
     case WM_ACTIVATEAPP:
         if (m_isFullscreen && m_hWnd)

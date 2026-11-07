@@ -8,6 +8,8 @@
 namespace
 {
     constexpr int kControlBarHeight = IControlBarView::kDefaultHeight;
+    constexpr UINT_PTR kCursorHideTimerId = 1;
+    constexpr UINT kCursorHideDelayMs = 3000;
     constexpr wchar_t kPlayerClassName[] = L"NextVideoPlayer_VideoPlayerWnd";
     constexpr wchar_t kVideoHostClassName[] = L"NextVideoPlayer_VideoHostWnd";
 
@@ -40,6 +42,7 @@ VideoPlayerView::VideoPlayerView(IControlBarView& controlBarView)
 
 VideoPlayerView::~VideoPlayerView()
 {
+    ResetCursorAutoHide();
     if (m_hWnd && IsWindow(m_hWnd))
     {
         DestroyWindow(m_hWnd);
@@ -143,12 +146,14 @@ void VideoPlayerView::SetVideoVisible(bool visible)
         return;
     }
     m_isVideoVisible = visible;
+    if (!visible) ResetCursorAutoHide();
     if (m_videoHwnd)
     {
         ShowWindow(m_videoHwnd, visible ? SW_SHOW : SW_HIDE);
     }
     UpdateLayout();
     Render();
+    if (visible) RestartCursorHideTimer();
 }
 
 void VideoPlayerView::SetStatusText(const std::wstring& statusText)
@@ -171,14 +176,106 @@ void VideoPlayerView::SetFullscreenActive(bool active)
         return;
     }
     m_isFullscreen = active;
+    ResetCursorAutoHide();
     m_lastMouseActiveTick = GetTickCount64();
     m_controlBarView.SetVisible(!m_isFullscreen);
     UpdateLayout();
+    if (active) RestartCursorHideTimer();
+}
+
+void VideoPlayerView::SetWindowActive(bool active)
+{
+    m_isWindowActive = active;
+    if (active) RestartCursorHideTimer();
+    else ResetCursorAutoHide();
 }
 
 bool VideoPlayerView::IsFullscreenActive() const
 {
     return m_isFullscreen;
+}
+
+bool VideoPlayerView::IsVideoWindow(HWND hwnd) const
+{
+    return hwnd && (hwnd == m_hWnd || hwnd == m_videoHwnd ||
+        (m_videoHwnd && IsChild(m_videoHwnd, hwnd)));
+}
+
+bool VideoPlayerView::IsCursorOverVideo(POINT* position) const
+{
+    POINT point{};
+    if (!m_hWnd || !GetCursorPos(&point)) return false;
+    if (position) *position = point;
+    return IsVideoWindow(WindowFromPoint(point));
+}
+
+bool VideoPlayerView::IsCursorAutoHideEnabled() const
+{
+    return m_hWnd && m_isFullscreen && m_isWindowActive && m_isVideoVisible &&
+        !m_controlBarView.IsDragging() && !GetCapture();
+}
+
+void VideoPlayerView::ResetCursorAutoHide()
+{
+    if (m_isCursorTimerArmed && m_hWnd) KillTimer(m_hWnd, kCursorHideTimerId);
+    m_isCursorTimerArmed = false;
+    m_cursorHideDue = 0;
+
+    const bool wasHidden = m_isCursorHidden;
+    m_isCursorHidden = false;
+    // Another window owns its cursor shape once the pointer leaves this video.
+    if (wasHidden && IsCursorOverVideo()) SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+}
+
+void VideoPlayerView::RestartCursorHideTimer()
+{
+    ResetCursorAutoHide();
+    POINT position{};
+    if (!IsCursorAutoHideEnabled() || !IsCursorOverVideo(&position)) return;
+
+    m_lastCursorPosition = position;
+    m_hasCursorPosition = true;
+    if (!m_isTrackingCursor)
+    {
+        TRACKMOUSEEVENT tracking{ sizeof(tracking), TME_LEAVE, m_hWnd, 0 };
+        m_isTrackingCursor = TrackMouseEvent(&tracking) != FALSE;
+        if (!m_isTrackingCursor) return;
+    }
+
+    m_cursorHideDue = GetTickCount64() + kCursorHideDelayMs;
+    m_isCursorTimerArmed = SetTimer(m_hWnd, kCursorHideTimerId, kCursorHideDelayMs, nullptr) != 0;
+    if (!m_isCursorTimerArmed) m_cursorHideDue = 0;
+}
+
+void VideoPlayerView::OnCursorMouseMove(LPARAM lParam)
+{
+    POINT position{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+    if (!ClientToScreen(m_hWnd, &position)) return;
+    // Repaints can generate mouse messages without a physical mouse movement.
+    if (!m_hasCursorPosition || position.x != m_lastCursorPosition.x || position.y != m_lastCursorPosition.y)
+        RestartCursorHideTimer();
+}
+
+void VideoPlayerView::OnCursorHideTimer()
+{
+    if (!m_isCursorTimerArmed) return;
+    const ULONGLONG now = GetTickCount64();
+    // KillTimer does not remove messages already posted before a timer restart.
+    if (now < m_cursorHideDue)
+    {
+        if (!SetTimer(m_hWnd, kCursorHideTimerId, static_cast<UINT>(m_cursorHideDue - now), nullptr))
+            ResetCursorAutoHide();
+        return;
+    }
+
+    KillTimer(m_hWnd, kCursorHideTimerId);
+    m_isCursorTimerArmed = false;
+    m_cursorHideDue = 0;
+    if (IsCursorAutoHideEnabled() && GetForegroundWindow() == GetOwnerHwnd() && IsCursorOverVideo())
+    {
+        m_isCursorHidden = true;
+        SetCursor(nullptr);
+    }
 }
 
 void VideoPlayerView::UpdateFullscreenAutoHide()
@@ -518,6 +615,47 @@ LRESULT VideoPlayerView::HandleMessage(UINT message, WPARAM wParam, LPARAM lPara
 {
     switch (message)
     {
+    case WM_TIMER:
+        if (wParam == kCursorHideTimerId)
+        {
+            OnCursorHideTimer();
+            return 0;
+        }
+        break;
+    case WM_MOUSEMOVE:
+        OnCursorMouseMove(lParam);
+        return 0;
+    case WM_MOUSELEAVE:
+        m_isTrackingCursor = false;
+        m_hasCursorPosition = false;
+        RestartCursorHideTimer();
+        return 0;
+    case WM_SETCURSOR:
+        if (LOWORD(lParam) == HTCLIENT && IsVideoWindow(reinterpret_cast<HWND>(wParam)))
+        {
+            if (m_isCursorHidden)
+            {
+                if (IsCursorAutoHideEnabled() && GetForegroundWindow() == GetOwnerHwnd() && IsCursorOverVideo())
+                {
+                    SetCursor(nullptr);
+                    return TRUE;
+                }
+                ResetCursorAutoHide();
+            }
+        }
+        else
+        {
+            ResetCursorAutoHide();
+        }
+        break;
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+        RestartCursorHideTimer();
+        break;
+    case WM_CANCELMODE:
+        ResetCursorAutoHide();
+        break;
     case WM_SIZE:
         OnResize();
         return 0;
@@ -538,6 +676,9 @@ LRESULT VideoPlayerView::HandleMessage(UINT message, WPARAM wParam, LPARAM lPara
         }
         return 0;
     case WM_DESTROY:
+        ResetCursorAutoHide();
+        m_isTrackingCursor = false;
+        m_hasCursorPosition = false;
         DiscardDeviceResources();
         return 0;
     case WM_NCDESTROY:

@@ -118,6 +118,11 @@ void VideoPlayerPresenter::OnShellFullscreenChanged(bool fullscreen)
     m_player.SetFullscreenActive(fullscreen);
 }
 
+void VideoPlayerPresenter::OnShellActivationChanged(bool active)
+{
+    m_player.SetWindowActive(active);
+}
+
 void VideoPlayerPresenter::ApplyConfig()
 {
     m_model.SetRepeat(m_config.repeatEnabled);

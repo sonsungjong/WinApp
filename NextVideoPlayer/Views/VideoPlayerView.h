@@ -22,6 +22,7 @@ public:
     void SetVideoVisible(bool visible) override;
     void SetStatusText(const std::wstring& statusText) override;
     void SetFullscreenActive(bool active) override;
+    void SetWindowActive(bool active) override;
     bool IsFullscreenActive() const override;
     void UpdateFullscreenAutoHide() override;
 
@@ -71,6 +72,13 @@ private:
     void OnResize();
 
     HWND GetOwnerHwnd() const;
+    bool IsVideoWindow(HWND hwnd) const;
+    bool IsCursorOverVideo(POINT* position = nullptr) const;
+    bool IsCursorAutoHideEnabled() const;
+    void RestartCursorHideTimer();
+    void ResetCursorAutoHide();
+    void OnCursorMouseMove(LPARAM lParam);
+    void OnCursorHideTimer();
 
     IControlBarView& m_controlBarView;
     HINSTANCE m_hInstance = nullptr;
@@ -81,6 +89,13 @@ private:
     bool m_isVideoVisible = false;
     bool m_isFullscreen = false;
     ULONGLONG m_lastMouseActiveTick = 0;
+    bool m_isWindowActive = false;
+    bool m_isCursorHidden = false;
+    bool m_isCursorTimerArmed = false;
+    bool m_isTrackingCursor = false;
+    bool m_hasCursorPosition = false;
+    POINT m_lastCursorPosition{};
+    ULONGLONG m_cursorHideDue = 0;
 
     std::wstring m_windowClass;
     std::wstring m_statusText;

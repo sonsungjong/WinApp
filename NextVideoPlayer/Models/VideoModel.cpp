@@ -43,6 +43,8 @@ bool VideoModel::Initialize(HWND videoHwnd)
     mpv_set_option_string(m_mpv, "sub-codepage", "auto");
     mpv_set_option_string(m_mpv, "input-default-bindings", "no");
     mpv_set_option_string(m_mpv, "input-vo-keyboard", "no");
+    // The view owns cursor visibility and its fullscreen inactivity timer.
+    mpv_set_option_string(m_mpv, "cursor-autohide", "no");
 
     if (mpv_initialize(m_mpv) < 0)
     {

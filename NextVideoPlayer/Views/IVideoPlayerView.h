@@ -14,6 +14,7 @@ public:
     virtual void SetVideoVisible(bool visible) = 0;
     virtual void SetStatusText(const std::wstring& statusText) = 0;
     virtual void SetFullscreenActive(bool active) = 0;
+    virtual void SetWindowActive(bool active) = 0;
     virtual bool IsFullscreenActive() const = 0;
     virtual void UpdateFullscreenAutoHide() = 0;
 

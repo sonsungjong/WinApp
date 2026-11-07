@@ -13,6 +13,7 @@ MainPresenter::~MainPresenter()
     m_shell.SetOnMouseWheel({});
     m_shell.SetOnFilesDropped({});
     m_shell.SetOnFullscreenChanged({});
+    m_shell.SetOnActivationChanged({});
 }
 
 bool MainPresenter::Initialize()
@@ -27,6 +28,7 @@ bool MainPresenter::Initialize()
     m_shell.SetOnMouseWheel([this](int delta) { m_videoPlayer.HandleShellMouseWheel(delta); });
     m_shell.SetOnFilesDropped([this](HDROP drop) { m_videoPlayer.HandleShellDropFiles(drop); });
     m_shell.SetOnFullscreenChanged([this](bool fullscreen) { m_videoPlayer.OnShellFullscreenChanged(fullscreen); });
+    m_shell.SetOnActivationChanged([this](bool active) { m_videoPlayer.OnShellActivationChanged(active); });
     return true;
 }
 

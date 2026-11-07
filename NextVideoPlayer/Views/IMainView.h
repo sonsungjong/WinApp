@@ -24,4 +24,5 @@ public:
     virtual void SetOnMouseWheel(std::function<void(int)> handler) = 0;
     virtual void SetOnFilesDropped(std::function<void(HDROP)> handler) = 0;
     virtual void SetOnFullscreenChanged(std::function<void(bool)> handler) = 0;
+    virtual void SetOnActivationChanged(std::function<void(bool)> handler) = 0;
 };

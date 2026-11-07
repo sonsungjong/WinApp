@@ -29,6 +29,7 @@ public:
     void SetOnMouseWheel(std::function<void(int)> handler) override;
     void SetOnFilesDropped(std::function<void(HDROP)> handler) override;
     void SetOnFullscreenChanged(std::function<void(bool)> handler) override;
+    void SetOnActivationChanged(std::function<void(bool)> handler) override;
 
 private:
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -66,4 +67,5 @@ private:
     std::function<void(int)> m_onMouseWheel;
     std::function<void(HDROP)> m_onFilesDropped;
     std::function<void(bool)> m_onFullscreenChanged;
+    std::function<void(bool)> m_onActivationChanged;
 };

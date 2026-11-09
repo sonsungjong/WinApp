@@ -665,6 +665,13 @@ LRESULT VideoPlayerView::HandleMessage(UINT message, WPARAM wParam, LPARAM lPara
     case WM_MBUTTONDOWN:
         RestartCursorHideTimer();
         break;
+    case WM_CONTEXTMENU:
+        if (m_parentHwnd && IsWindow(m_parentHwnd))
+        {
+            SendMessageW(m_parentHwnd, WM_CONTEXTMENU, wParam, lParam);
+            return 0;
+        }
+        break;
     case WM_CANCELMODE:
         ResetCursorAutoHide();
         break;

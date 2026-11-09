@@ -1,5 +1,8 @@
 #include "Views/MainView.h"
 #include "Resource.h"
+#include <dwmapi.h>
+
+#pragma comment(lib, "dwmapi.lib")
 
 namespace
 {
@@ -56,6 +59,11 @@ bool MainView::Initialize(HINSTANCE hInstance)
     }
 
     m_hMenu = GetMenu(m_hWnd);
+    SetMenu(m_hWnd, nullptr);
+
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(m_hWnd, 20, &darkMode, sizeof(darkMode));
+    DwmSetWindowAttribute(m_hWnd, 19, &darkMode, sizeof(darkMode));
 
     if (SUCCEEDED(CoCreateInstance(CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_taskbarList))))
     {
@@ -202,7 +210,7 @@ void MainView::ExitFullscreen()
         m_taskbarList->MarkFullscreenWindow(m_hWnd, FALSE);
     }
 
-    SetMenu(m_hWnd, m_hMenu);
+    SetMenu(m_hWnd, nullptr);
     SetWindowLongPtrW(m_hWnd, GWL_STYLE, m_savedStyle);
     SetWindowLongPtrW(m_hWnd, GWL_EXSTYLE, m_savedExStyle);
     SetWindowPlacement(m_hWnd, &m_savedPlacement);
@@ -317,6 +325,46 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
         }
         if (m_onCommand) m_onCommand(commandId);
+        return 0;
+    }
+
+    case WM_CONTEXTMENU:
+    {
+        if (m_hMenu)
+        {
+            HMENU hPopup = CreatePopupMenu();
+            if (hPopup)
+            {
+                const wchar_t* titles[] = { L"파일(&F)", L"재생(&P)", L"자막(&S)", L"보기(&V)" };
+                int added = 0;
+                for (int i = 0; i < 4; ++i)
+                {
+                    HMENU hSub = GetSubMenu(m_hMenu, i);
+                    if (hSub)
+                    {
+                        AppendMenuW(hPopup, MF_POPUP, reinterpret_cast<UINT_PTR>(hSub), titles[i]);
+                        ++added;
+                    }
+                }
+                int x = GET_X_LPARAM(lParam);
+                int y = GET_Y_LPARAM(lParam);
+                if (x == -1 && y == -1)
+                {
+                    RECT rc{};
+                    GetClientRect(m_hWnd, &rc);
+                    POINT pt{ rc.left + 50, rc.top + 50 };
+                    ClientToScreen(m_hWnd, &pt);
+                    x = pt.x;
+                    y = pt.y;
+                }
+                TrackPopupMenuEx(hPopup, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON, x, y, m_hWnd, nullptr);
+                for (int i = 0; i < added; ++i)
+                {
+                    RemoveMenu(hPopup, 0, MF_BYPOSITION);
+                }
+                DestroyMenu(hPopup);
+            }
+        }
         return 0;
     }
 

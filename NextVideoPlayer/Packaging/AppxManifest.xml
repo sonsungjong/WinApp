@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap desktop4 rescap">
+  <Identity Name="SUNGJONG.NextVideoPlayer" Publisher="CN=2F982184-7E58-4E48-8591-3878B830CF0B"
+            Version="1.0.0.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>NextVideoPlayer</DisplayName>
+    <PublisherDisplayName>SUNGJONG</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Windows video player</Description>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="ko-KR" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="NextVideoPlayer.exe" EntryPoint="Windows.FullTrustApplication"
+                 desktop4:SupportsMultipleInstances="true">
+      <uap:VisualElements DisplayName="NextVideoPlayer" Description="Windows video player"
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

@@ -1,5 +1,6 @@
 #include "framework.h"
 #include "App.h"
+#include <exception>
 #include "Models/ConfigService.h"
 #include "Models/ControlBarModel.h"
 #include "Models/PlaylistModel.h"
@@ -48,6 +49,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR lpCmdLine,
                      _In_ int nCmdShow)
+try
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
@@ -95,4 +97,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     }
     mainView.SetOnTimer({});
     return result == -1 ? 1 : static_cast<int>(message.wParam);
+}
+catch (const std::exception& error)
+{
+    OutputDebugStringA(error.what());
+    MessageBoxW(nullptr,
+        L"프로그램 초기화에 실패했습니다.\n사용자 설정 폴더의 접근 권한과 실행 파일을 확인해 주세요.",
+        L"NextVideoPlayer", MB_OK | MB_ICONERROR);
+    return 1;
 }

@@ -2,6 +2,8 @@
 
 C++ WinAPI 기반의 MVP 패턴으로 개발 (Model-View-Presenter)
 
+MSI·MSIX 빌드 및 Microsoft Store/GitHub Release 배포 준비: [패키징 안내](Packaging/README.md)
+
 libmpv / libVLC 같은 오픈소스 미디어 코어를 연동해 빠르게 완성도 높은 플레이어 구축
 FFmpeg + Direct2D/D3D11 + PeekMessage 루프 구축
 GPU 가속을 통한 배속 지원 가능해야함

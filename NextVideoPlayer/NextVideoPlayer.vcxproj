@@ -177,6 +177,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Version.h" />
     <ClInclude Include="ThirdParty\cJSON\cJSON.h" />
     <ClInclude Include="Views\FileDialogs.h" />
     <ClInclude Include="Presenters\PlaylistPresenter.h" />
@@ -237,6 +238,7 @@
     <Image Include="NextVideoPlayer.ico" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Packaging\**\*" />
     <None Include="ThirdParty\cJSON\LICENSE" />
     <None Include="LICENSE.txt" />
     <None Include="Readme.md" />

@@ -7,6 +7,7 @@ class ConfigService
 {
 public:
     ConfigService();
+    explicit ConfigService(std::wstring configPath, std::wstring legacyConfigPath = {});
     ~ConfigService() = default;
 
     AppConfig Load() const;
@@ -15,5 +16,5 @@ public:
 
 private:
     std::wstring m_configPath;
+    std::wstring m_legacyConfigPath;
 };
-

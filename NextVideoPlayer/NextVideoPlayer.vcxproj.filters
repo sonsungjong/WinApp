@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Filter Include="Services">
+      <UniqueIdentifier>{C56B263E-1B10-4454-AF49-BBD267321298}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Services\Api">
+      <UniqueIdentifier>{93EF7D97-DA80-4312-96BB-C0F7E6DF388C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebsockets">
+      <UniqueIdentifier>{E1E62C7F-5592-4DBB-B108-0EBB0C139CE6}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Packaging">
       <UniqueIdentifier>{50CA7F45-BCEE-4F13-9874-28B55B8A2302}</UniqueIdentifier>
     </Filter>
@@ -25,6 +34,15 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Models\ApiSettings.h">
+      <Filter>Models</Filter>
+    </ClInclude>
+    <ClInclude Include="Models\AppInfo.h">
+      <Filter>Models</Filter>
+    </ClInclude>
+    <ClInclude Include="Services\Api\*.h">
+      <Filter>Services\Api</Filter>
+    </ClInclude>
     <ClInclude Include="Version.h" />
     <ClInclude Include="ThirdParty\cJSON\cJSON.h">
       <Filter>ThirdParty\cJSON</Filter>
@@ -107,6 +125,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Services\Api\*.cpp">
+      <Filter>Services\Api</Filter>
+    </ClCompile>
     <ClCompile Include="ThirdParty\cJSON\cJSON.c">
       <Filter>ThirdParty\cJSON</Filter>
     </ClCompile>
@@ -121,6 +142,9 @@
     </ClCompile>
     <ClCompile Include="App.cpp" />
     <ClCompile Include="Models\ConfigService.cpp">
+      <Filter>Models</Filter>
+    </ClCompile>
+    <ClCompile Include="Models\AppInfo.cpp">
       <Filter>Models</Filter>
     </ClCompile>
     <ClCompile Include="Models\ControlBarModel.cpp">
@@ -158,6 +182,13 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="setup_websocket.ps1" />
+    <None Include="AppInfo.json" />
+    <None Include="ThirdParty\libwebsockets\*">
+      <Filter>ThirdParty\libwebsockets</Filter>
+    </None>
+    <None Include="API\*" />
+    <None Include="Tests\api_integration.py" />
     <ResourceCompile Include="NextVideoPlayer.rc">
       <Filter>리소스 파일</Filter>
     </ResourceCompile>

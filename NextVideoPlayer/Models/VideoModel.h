@@ -58,6 +58,10 @@ public:
     PlaybackState GetState() const override;
     const std::wstring& GetFilePath() const override;
     bool HasMedia() const override;
+    bool IsMediaReady() const override { return m_mediaReady; }
+    bool IsLoading() const override { return m_loading; }
+    std::string GetMediaError() const override { return m_mediaError; }
+    std::uint64_t GetMediaGeneration() const override { return m_mediaGeneration; }
 
 private:
     bool LoadFileInternal(const std::wstring& filePath);
@@ -65,6 +69,11 @@ private:
 
     mpv_handle* m_mpv = nullptr;
     std::int64_t m_playbackEntryId = -1;
+    std::int64_t m_eventEntryId = -1;
+    bool m_mediaReady = false;
+    bool m_loading = false;
+    std::string m_mediaError;
+    std::uint64_t m_mediaGeneration=0;
     std::wstring m_filePath;
     PlaybackState m_state = PlaybackState::Stopped;
 

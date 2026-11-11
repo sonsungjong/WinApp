@@ -4,16 +4,21 @@ C++ WinAPI 기반의 MVP 패턴으로 개발 (Model-View-Presenter)
 
 MSI·MSIX 빌드 및 Microsoft Store/GitHub Release 배포 준비: [패키징 안내](Packaging/README.md)
 
+외부 프로그램에서 재생을 제어하는 libwebsockets API를 지원합니다. 환경설정의 API 탭에서 켠 뒤 제어화면을 열면 브라우저에서 바로 사용할 수 있습니다. 기본 주소는 `ws://127.0.0.1:49152/api/v1`이며 처음에는 꺼져 있습니다. [API 사용 안내](API/README.md)
+
+환경설정의 정보 탭에서 버전, 개발자 SUNGJONG, 문의 이메일, 시스템 사양 안내와 외부 라이브러리 라이선스를 확인할 수 있습니다. 표시할 정보는 `AppInfo.json`에서 관리하며 빌드 시 실행 파일에 포함합니다. CPU·RAM·화면의 최소·권장 수치는 성능 검증 전의 안내안으로 표시합니다.
+
 libmpv / libVLC 같은 오픈소스 미디어 코어를 연동해 빠르게 완성도 높은 플레이어 구축
 FFmpeg + Direct2D/D3D11 + PeekMessage 루프 구축
 GPU 가속을 통한 배속 지원 가능해야함
 
 - libmpv (LGPLv2.1+ / ISC)
-- FFmpeg (LGPLv2.1+)
+- FFmpeg (선택한 libmpv SDK에는 LGPLv3+ 빌드가 정적으로 포함됨)
 - libass (ISC)
 - libplacebo (LGPLv2.1+)
 - uchardet (MPL 1.1 / LGPLv2.1+)
 - [cJSON v1.7.19](https://github.com/DaveGamble/cJSON/tree/v1.7.19) (MIT, `ThirdParty/cJSON` 소스 포함)
+- libwebsockets (고정 리비전과 SHA256으로 자동 준비, 정적 링크, 라이선스는 `ThirdParty/libwebsockets/LICENSE.txt`)
 
 
 ## 향후 개발 항목 (TODO)

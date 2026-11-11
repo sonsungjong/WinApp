@@ -65,9 +65,16 @@ $mpv = Join-Path $BinaryDirectory 'libmpv-2.dll'
 if (-not (Test-Path -LiteralPath $mpv)) { $mpv = Join-Path $projectRoot 'ThirdParty\libmpv\libmpv-2.dll' }
 Copy-Item -LiteralPath $mpv -Destination $payload
 Copy-Item -LiteralPath (Join-Path $projectRoot 'NextVideoPlayer.ico') -Destination $payload
+Copy-Item -LiteralPath (Join-Path $projectRoot 'AppInfo.json') -Destination $payload
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE.txt') -Destination $licenseDirectory
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ThirdParty\cJSON\LICENSE') -Destination (Join-Path $licenseDirectory 'cJSON-MIT.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'ThirdParty\libwebsockets\LICENSE.txt') -Destination (Join-Path $licenseDirectory 'libwebsockets.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'ThirdParty\libwebsockets\NOTICE.txt') -Destination (Join-Path $licenseDirectory 'libwebsockets-NOTICE.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'ThirdParty\libwebsockets\dependency.json') -Destination (Join-Path $licenseDirectory 'libwebsockets-source.json')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'API') -Destination $payload -Recurse
 Copy-Item -LiteralPath "$PSScriptRoot\Licenses\NanumSquare-OFL.txt" -Destination $licenseDirectory
+Copy-Item -LiteralPath "$PSScriptRoot\Licenses\FFmpeg-LGPL-3.0.txt" -Destination $licenseDirectory
+Copy-Item -LiteralPath "$PSScriptRoot\Licenses\GPL-3.0.txt" -Destination $licenseDirectory
 foreach ($font in @('NanumSquareR.ttf','NanumSquareB.ttf')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "ThirdParty\fonts\$font") -Destination $fontDirectory
 }
@@ -106,6 +113,7 @@ Vulkan runtime: $($config.VulkanRuntime.Url)
 Vulkan archive SHA256: $($config.VulkanRuntime.Sha256)
 Vulkan loader source: https://github.com/KhronosGroup/Vulkan-Loader
 cJSON source: https://github.com/DaveGamble/cJSON/tree/v1.7.19
+libwebsockets source revision and archive hash: libwebsockets-source.json
 NanumSquare: https://hangeul.naver.com/
 Microsoft VC++ runtime: $([IO.Path]::GetFileName([IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($tools.Crt))))
 

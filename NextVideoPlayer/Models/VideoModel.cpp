@@ -103,7 +103,11 @@ bool VideoModel::LoadFileInternal(const std::wstring& filePath)
     mpv_set_property(m_mpv, "pause", MPV_FORMAT_FLAG, &pauseFlag);
 
     m_filePath = filePath;
+    ++m_mediaGeneration;
     m_state = PlaybackState::Playing;
+    m_mediaReady = false;
+    m_loading = true;
+    m_mediaError.clear();
     return true;
 }
 
@@ -139,6 +143,8 @@ void VideoModel::Pause()
 
 void VideoModel::Stop()
 {
+    m_mediaReady = false;
+    m_loading = false;
     m_playbackEntryId = -1;
     if (m_mpv)
     {
@@ -159,7 +165,17 @@ void VideoModel::ProcessEvents()
             break;
         }
 
-        if (event->event_id == MPV_EVENT_END_FILE)
+        if (event->event_id == MPV_EVENT_START_FILE)
+        {
+            const auto* start = static_cast<const mpv_event_start_file*>(event->data);
+            m_eventEntryId = start ? start->playlist_entry_id : -1;
+        }
+        else if (event->event_id == MPV_EVENT_FILE_LOADED && m_eventEntryId == m_playbackEntryId && m_playbackEntryId >= 0)
+        {
+            m_mediaReady = true;
+            m_loading = false;
+        }
+        else if (event->event_id == MPV_EVENT_END_FILE)
         {
             auto* endFile = static_cast<mpv_event_end_file*>(event->data);
             if (!endFile || m_playbackEntryId < 0 || endFile->playlist_entry_id != m_playbackEntryId)
@@ -168,6 +184,8 @@ void VideoModel::ProcessEvents()
             }
 
             m_playbackEntryId = -1;
+            m_mediaReady = false;
+            m_loading = false;
             if (endFile->reason == MPV_END_FILE_REASON_EOF)
             {
                 m_state = PlaybackState::Stopped;
@@ -175,6 +193,7 @@ void VideoModel::ProcessEvents()
             }
             else if (endFile->reason == MPV_END_FILE_REASON_ERROR)
             {
+                m_mediaError = mpv_error_string(endFile->error);
                 m_state = PlaybackState::Stopped;
             }
         }

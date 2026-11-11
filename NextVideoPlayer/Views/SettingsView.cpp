@@ -4,6 +4,8 @@
 #include <dwmapi.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <cwchar>
 
 #pragma comment(lib, "dwmapi.lib")
 
@@ -20,6 +22,18 @@ namespace
     constexpr int kIdTabPlayback = 101;
     constexpr int kIdTabSubtitle = 102;
     constexpr int kIdTabView = 103;
+    constexpr int kIdTabApi = 104;
+    constexpr int kIdTabInfo = 105;
+    constexpr int kTabCount = 6;
+    constexpr int kIdApiEnable = 601;
+    constexpr int kIdApiIp = 602;
+    constexpr int kIdApiPort = 603;
+    constexpr int kIdApiPage = 604;
+    constexpr int kIdApiCopy = 605;
+    constexpr int kIdInfoText = 701;
+    constexpr int kIdInfoEmail = 702;
+    constexpr int kIdInfoYoutube = 703;
+    constexpr int kIdInfoLicense = 704;
 
     // Action & Setting Control IDs
     constexpr int kIdFileOpen = 201;
@@ -57,8 +71,9 @@ namespace
     constexpr int kIdBtnCancel = 901;
 }
 
-SettingsView::SettingsView(HFONT)
+SettingsView::SettingsView(const AppInfo& appInfo, HFONT dialogFont) : m_dialogFont(dialogFont), m_appInfo(appInfo)
 {
+    m_editBackground = CreateSolidBrush(RGB(18, 21, 30));
 }
 
 SettingsView::~SettingsView()
@@ -67,6 +82,8 @@ SettingsView::~SettingsView()
     {
         DestroyWindow(m_hWnd);
     }
+    if (m_editBackground)
+        DeleteObject(m_editBackground);
 }
 
 bool SettingsView::ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConfig& initialConfig)
@@ -97,6 +114,7 @@ bool SettingsView::ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConf
     m_pendingPostCommand = 0;
     m_hoveredId = -1;
     m_pressedId = -1;
+    m_showingLicenses = false;
 
     RECT parentRc{};
     if (parentHwnd && !GetWindowRect(parentHwnd, &parentRc))
@@ -113,25 +131,24 @@ bool SettingsView::ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConf
         EnableWindow(parentHwnd, FALSE);
     }
 
-    HWND hDlg = CreateWindowExW(
-        0,
-        kSettingsClassName,
-        L"환경설정 (Preferences)",
-        WS_POPUP | WS_VISIBLE,
-        posX,
-        posY,
-        kDlgWidth,
-        kDlgHeight,
-        parentHwnd,
-        nullptr,
-        hInstance,
-        this);
+    HWND hDlg =
+        CreateWindowExW(0, kSettingsClassName, L"환경설정 (Preferences)", WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN, posX,
+                        posY, kDlgWidth, kDlgHeight, parentHwnd, nullptr, hInstance, this);
 
     if (!hDlg)
     {
         if (parentHwnd && parentWasEnabled) EnableWindow(parentHwnd, TRUE);
         return false;
     }
+    if (!CreateApiEditors() || !CreateInfoEditor())
+    {
+        DestroyWindow(hDlg);
+        if (parentHwnd && parentWasEnabled)
+            EnableWindow(parentHwnd, TRUE);
+        return false;
+    }
+    UpdateTabVisibility();
+    SetTimer(hDlg, 2, 250, nullptr);
 
     BOOL darkMode = TRUE;
     DwmSetWindowAttribute(hDlg, 20, &darkMode, sizeof(darkMode));
@@ -161,10 +178,14 @@ bool SettingsView::ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConf
             {
                 if (m_onSaveClicked) m_onSaveClicked();
                 else CloseModal(true);
-                break;
+                if (m_done)
+                    break;
+                continue;
             }
         }
 
+        if (IsDialogMessageW(hDlg, &msg))
+            continue;
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
@@ -192,6 +213,125 @@ bool SettingsView::ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConf
 AppConfig SettingsView::ReadFormValues(const AppConfig&) const
 {
     return m_currentConfig;
+}
+
+bool SettingsView::CreateApiEditors()
+{
+    m_ipEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", m_currentConfig.api.ip.c_str(),
+                               WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL, 180, 218, 360, 30, m_hWnd,
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdApiIp)), m_hInstance, nullptr);
+    m_portEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", std::to_wstring(m_currentConfig.api.port).c_str(),
+                                 WS_CHILD | WS_TABSTOP | ES_NUMBER | ES_AUTOHSCROLL, 180, 260, 140, 30, m_hWnd,
+                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdApiPort)), m_hInstance, nullptr);
+    if (!m_ipEdit || !m_portEdit)
+        return false;
+    const auto font = m_dialogFont ? m_dialogFont : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    for (HWND edit : {m_ipEdit, m_portEdit})
+        SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    SendMessageW(m_ipEdit, EM_SETLIMITTEXT, 100, 0);
+    SendMessageW(m_portEdit, EM_SETLIMITTEXT, 5, 0);
+    return true;
+}
+void SettingsView::UpdateTabVisibility()
+{
+    for (HWND edit : {m_ipEdit, m_portEdit})
+        if (edit)
+            ShowWindow(edit, m_activeTab == 4 ? SW_SHOW : SW_HIDE);
+    if (m_infoEdit)
+        ShowWindow(m_infoEdit, m_activeTab == 5 ? SW_SHOW : SW_HIDE);
+}
+
+bool SettingsView::CreateInfoEditor()
+{
+    m_infoEdit =
+        CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", m_appInfo.displayText.c_str(),
+                        WS_CHILD | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 26, 124, 548,
+                        214, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdInfoText)), m_hInstance, nullptr);
+    if (!m_infoEdit)
+        return false;
+    const auto font = m_dialogFont ? m_dialogFont : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    SendMessageW(m_infoEdit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    SendMessageW(m_infoEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(12, 12));
+    SendMessageW(m_infoEdit, EM_SETLIMITTEXT, 1024 * 1024, 0);
+    return true;
+}
+
+void SettingsView::ToggleLicenses()
+{
+    const bool showLicenses = !m_showingLicenses;
+    const auto text = showLicenses ? AppInfo::LicenseText(m_hInstance) : m_appInfo.displayText;
+    SetWindowTextW(m_infoEdit, text.c_str());
+    SendMessageW(m_infoEdit, EM_SETSEL, 0, 0);
+    SendMessageW(m_infoEdit, EM_SCROLLCARET, 0, 0);
+    m_showingLicenses = showLicenses;
+}
+
+void SettingsView::OpenInfoLink(const std::wstring& target)
+{
+    const auto result =
+        reinterpret_cast<INT_PTR>(ShellExecuteW(m_hWnd, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    if (result <= 32)
+        MessageBoxW(m_hWnd, L"연결된 프로그램을 열 수 없습니다. 정보 화면의 주소를 복사해 사용하세요.", L"앱 정보",
+                    MB_OK | MB_ICONINFORMATION);
+}
+bool SettingsView::TryReadFormValues(const AppConfig&, AppConfig& result)
+{
+    auto config = m_currentConfig;
+    wchar_t ip[128]{}, port[16]{};
+    GetWindowTextW(m_ipEdit, ip, 128);
+    GetWindowTextW(m_portEdit, port, 16);
+    config.api.ip = ip;
+    wchar_t* end = nullptr;
+    const auto number = std::wcstol(port, &end, 10);
+    if (!ApiSettings::IsValidIp(config.api.ip))
+    {
+        m_activeTab = 4;
+        UpdateTabVisibility();
+        InvalidateRect(m_hWnd, nullptr, FALSE);
+        MessageBoxW(m_hWnd, L"올바른 IP 주소를 입력하세요(127.0.0.1 등).", L"API 설정", MB_OK | MB_ICONINFORMATION);
+        SetFocus(m_ipEdit);
+        return false;
+    }
+    if (end == port || *end || number < 1 || number > 65535)
+    {
+        m_activeTab = 4;
+        UpdateTabVisibility();
+        InvalidateRect(m_hWnd, nullptr, FALSE);
+        MessageBoxW(m_hWnd, L"포트는 1~65535 사이의 숫자로 입력하세요.", L"API 설정", MB_OK | MB_ICONINFORMATION);
+        SetFocus(m_portEdit);
+        return false;
+    }
+    config.api.port = static_cast<int>(number);
+    result = std::move(config);
+    return true;
+}
+void SettingsView::CopyApiAddress()
+{
+    AppConfig config;
+    if (!TryReadFormValues(m_currentConfig, config))
+        return;
+    const auto text = L"ws" + config.api.HttpUrl().substr(4) + L"api/v1";
+    if (!OpenClipboard(m_hWnd))
+        return;
+    const auto bytes = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (memory)
+    {
+        if (auto* data = GlobalLock(memory))
+        {
+            std::memcpy(data, text.c_str(), bytes);
+            GlobalUnlock(memory);
+            EmptyClipboard();
+            if (SetClipboardData(CF_UNICODETEXT, memory))
+            {
+                memory = nullptr;
+                m_apiCopiedUntil = GetTickCount64() + 2500;
+            }
+        }
+        if (memory)
+            GlobalFree(memory);
+    }
+    CloseClipboard();
 }
 
 void SettingsView::CloseModal(bool accepted)
@@ -407,8 +547,8 @@ D2D1_RECT_F SettingsView::GetCloseButtonRect() const
 
 D2D1_RECT_F SettingsView::GetTabRect(int tabIndex) const
 {
-    float startX = 40.0f;
-    float tabW = 124.0f;
+    float startX = 26.0f;
+    float tabW = (548.0f - 8.0f * (kTabCount - 1)) / kTabCount;
     float gap = 8.0f;
     float x = startX + tabIndex * (tabW + gap);
     return D2D1::RectF(x, 64.0f, x + tabW, 108.0f);
@@ -529,6 +669,29 @@ void SettingsView::BuildActiveTabLayout(
         outControls.push_back({ kIdPrevFile, D2D1::RectF(326.0f, 304.0f, 434.0f, 340.0f), L"⏮ 이전 파일" });
         outControls.push_back({ kIdNextFile, D2D1::RectF(444.0f, 304.0f, 554.0f, 340.0f), L"⏭ 다음 파일" });
     }
+    else if (m_activeTab == 4)
+    {
+        outCards.push_back({D2D1::RectF(26, 124, 574, 384), L"WebSocket API"});
+        outLabels.push_back({D2D1::RectF(46, 167, 480, 199), L"외부 프로그램으로 플레이어 제어"});
+        outControls.push_back({kIdApiEnable, D2D1::RectF(506, 171, 554, 195), L"", true, m_currentConfig.api.enabled});
+        outLabels.push_back({D2D1::RectF(46, 217, 170, 249), L"수신 IP"});
+        outLabels.push_back({D2D1::RectF(46, 259, 170, 291), L"포트"});
+        outControls.push_back({kIdApiPage, D2D1::RectF(338, 258, 554, 296), L"켜고 제어화면 열기"});
+        const auto status = GetTickCount64() < m_apiCopiedUntil ? L"WebSocket 주소를 복사했습니다."
+                                                                : (m_apiStatus ? m_apiStatus() : L"API 꺼짐");
+        outLabels.push_back({D2D1::RectF(46, 302, 554, 335), status});
+        outControls.push_back({kIdApiCopy, D2D1::RectF(46, 342, 262, 376), L"WebSocket 주소 복사"});
+        outLabels.push_back({D2D1::RectF(278, 342, 554, 376), L"기본값은 같은 PC에서 접속"});
+    }
+    else if (m_activeTab == 5)
+    {
+        outControls.push_back({kIdInfoEmail, D2D1::RectF(26, 350, 202, 384), L"이메일 문의"});
+        outControls.push_back({kIdInfoYoutube, D2D1::RectF(212, 350, 388, 384),
+                               m_appInfo.youtubeUrl.empty() ? L"YouTube 주소 준비 중" : L"YouTube 채널", false, false,
+                               m_appInfo.youtubeUrl.empty()});
+        outControls.push_back({kIdInfoLicense, D2D1::RectF(398, 350, 574, 384),
+                               m_showingLicenses ? L"앱 정보로 돌아가기" : L"라이선스 전문"});
+    }
 }
 
 int SettingsView::HitTest(float x, float y) const
@@ -539,7 +702,7 @@ int SettingsView::HitTest(float x, float y) const
 
     if (ptIn(GetCloseButtonRect(), x, y)) return kIdCloseBtn;
 
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < kTabCount; ++i)
     {
         if (ptIn(GetTabRect(i), x, y)) return kIdTabFile + i;
     }
@@ -604,7 +767,31 @@ void SettingsView::ExecuteControl(int controlId)
     case kIdTabPlayback:
     case kIdTabSubtitle:
     case kIdTabView:
+    case kIdTabApi:
+    case kIdTabInfo:
         m_activeTab = controlId - kIdTabFile;
+        UpdateTabVisibility();
+        break;
+    case kIdApiEnable:
+        m_currentConfig.api.enabled = !m_currentConfig.api.enabled;
+        break;
+    case kIdApiPage:
+        m_currentConfig.api.enabled = true;
+        if (m_onApiPage)
+            m_onApiPage();
+        break;
+    case kIdApiCopy:
+        CopyApiAddress();
+        break;
+    case kIdInfoEmail:
+        OpenInfoLink(L"mailto:" + m_appInfo.email + L"?subject=NextVideoPlayer");
+        break;
+    case kIdInfoYoutube:
+        if (!m_appInfo.youtubeUrl.empty())
+            OpenInfoLink(m_appInfo.youtubeUrl);
+        break;
+    case kIdInfoLicense:
+        ToggleLicenses();
         break;
 
     case kIdFileOpen:
@@ -788,14 +975,9 @@ void SettingsView::Draw()
         m_separatorBrush.Get(),
         1.0f);
 
-    const wchar_t* tabNames[4] = {
-        L"파일 (File)",
-        L"재생 (Playback)",
-        L"자막 (Subtitle)",
-        L"보기 (View)"
-    };
+    const wchar_t* tabNames[kTabCount] = {L"파일", L"재생", L"자막", L"보기", L"API", L"정보"};
 
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < kTabCount; ++i)
     {
         D2D1_RECT_F rcTab = GetTabRect(i);
         bool isActive = (m_activeTab == i);
@@ -979,6 +1161,15 @@ LRESULT SettingsView::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 {
     switch (msg)
     {
+    case WM_TIMER:
+        if (m_activeTab == 4)
+            InvalidateRect(hWnd, nullptr, FALSE);
+        return 0;
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORSTATIC:
+        SetTextColor(reinterpret_cast<HDC>(wParam), RGB(237, 241, 250));
+        SetBkColor(reinterpret_cast<HDC>(wParam), RGB(18, 21, 30));
+        return reinterpret_cast<LRESULT>(m_editBackground ? m_editBackground : GetStockObject(BLACK_BRUSH));
     case WM_PAINT:
     {
         PAINTSTRUCT ps{};
@@ -1073,6 +1264,9 @@ LRESULT SettingsView::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
 
     case WM_NCDESTROY:
+        m_ipEdit = nullptr;
+        m_portEdit = nullptr;
+        m_infoEdit = nullptr;
         DiscardDeviceResources();
         m_done = true;
         m_hWnd = nullptr;

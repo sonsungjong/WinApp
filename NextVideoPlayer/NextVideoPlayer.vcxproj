@@ -70,6 +70,19 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <NvpLwsRoot>$(ProjectDir)artifacts\lws\$(Platform)\$(Configuration)\install</NvpLwsRoot>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>LWS_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(NvpLwsRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(NvpLwsRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>nvp-websockets.lib;ws2_32.lib;iphlpapi.lib;bcrypt.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <OutDir>$(ProjectDir)</OutDir>
     <TargetName>$(ProjectName)D</TargetName>
@@ -177,6 +190,9 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Models\ApiSettings.h" />
+    <ClInclude Include="Models\AppInfo.h" />
+    <ClInclude Include="Services\Api\*.h" />
     <ClInclude Include="Version.h" />
     <ClInclude Include="ThirdParty\cJSON\cJSON.h" />
     <ClInclude Include="Views\FileDialogs.h" />
@@ -213,10 +229,12 @@
       <CompileAs>CompileAsC</CompileAs>
       <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
+    <ClCompile Include="Services\Api\*.cpp" />
     <ClCompile Include="Presenters\PlaylistPresenter.cpp" />
     <ClCompile Include="Views\PlaylistView.cpp" />
     <ClCompile Include="Models\PlaylistModel.cpp" />
     <ClCompile Include="Models\ConfigService.cpp" />
+    <ClCompile Include="Models\AppInfo.cpp" />
     <ClCompile Include="Models\ControlBarModel.cpp" />
     <ClCompile Include="Models\VideoModel.cpp" />
     <ClCompile Include="App.cpp" />
@@ -238,6 +256,11 @@
     <Image Include="NextVideoPlayer.ico" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="setup_websocket.ps1" />
+    <None Include="AppInfo.json" />
+    <None Include="API\*" />
+    <None Include="Tests\api_integration.py" />
+    <None Include="ThirdParty\libwebsockets\*" />
     <None Include="Packaging\**\*" />
     <None Include="ThirdParty\cJSON\LICENSE" />
     <None Include="LICENSE.txt" />
@@ -245,6 +268,9 @@
     <None Include="setup_sdk.bat" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="PrepareWebSocketLibrary" BeforeTargets="ClCompile">
+    <Exec Command="pwsh -NoProfile -File &quot;$(ProjectDir)setup_websocket.ps1&quot; -Configuration $(Configuration) -Platform $(Platform)" />
+  </Target>
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

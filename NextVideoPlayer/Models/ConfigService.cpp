@@ -108,6 +108,17 @@ AppConfig ConfigService::Load() const
         config.subtitleScale = parsedScale;
     }
 
+    config.api.enabled = GetPrivateProfileIntW(L"API", L"Enabled", 0, m_configPath.c_str()) != 0;
+    wchar_t apiIp[128]{};
+    GetPrivateProfileStringW(L"API", L"IP", L"127.0.0.1", apiIp, 128, m_configPath.c_str());
+    config.api.ip = apiIp;
+    wchar_t apiPort[32]{};
+    GetPrivateProfileStringW(L"API", L"Port", L"49152", apiPort, 32, m_configPath.c_str());
+    wchar_t* portEnd = nullptr;
+    const long port = std::wcstol(apiPort, &portEnd, 10);
+    config.api.port = portEnd != apiPort && *portEnd == L'\0' && port >= 1 && port <= 65535
+        ? static_cast<int>(port) : 0; // Invalid INI values disable only the listener, never the player.
+
     return config;
 }
 
@@ -129,6 +140,9 @@ void ConfigService::Save(const AppConfig& config) const
     WCHAR scaleBuf[32]{};
     swprintf_s(scaleBuf, L"%.2f", config.subtitleScale);
     WritePrivateProfileStringW(L"Subtitle", L"Scale", scaleBuf, m_configPath.c_str());
+    WritePrivateProfileStringW(L"API", L"Enabled", config.api.enabled ? L"1" : L"0", m_configPath.c_str());
+    WritePrivateProfileStringW(L"API", L"IP", config.api.ip.c_str(), m_configPath.c_str());
+    WritePrivateProfileStringW(L"API", L"Port", std::to_wstring(config.api.port).c_str(), m_configPath.c_str());
 }
 
 const std::wstring& ConfigService::GetConfigPath() const

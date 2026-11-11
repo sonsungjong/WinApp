@@ -1,6 +1,7 @@
 #pragma once
 
 #include "framework.h"
+#include <cstdint>
 
 enum class PlaybackState
 {
@@ -59,4 +60,8 @@ public:
     virtual PlaybackState GetState() const = 0;
     virtual const std::wstring& GetFilePath() const = 0;
     virtual bool HasMedia() const = 0;
+    virtual bool IsMediaReady() const { return HasMedia(); }
+    virtual bool IsLoading() const { return false; }
+    virtual std::string GetMediaError() const { return {}; }
+    virtual std::uint64_t GetMediaGeneration() const { return 0; }
 };

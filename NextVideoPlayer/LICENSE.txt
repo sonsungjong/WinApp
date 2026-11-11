@@ -11,9 +11,11 @@ This software uses the following open-source libraries:
    - Note: Built with LGPL configuration (-Dgpl=false). Dynamically linked.
 
 2. FFmpeg
-   - License: GNU Lesser General Public License (LGPL) version 2.1 or later
-   - Source: https://ffmpeg.org
-   - Note: Dynamically linked via libmpv.
+   - License: GNU Lesser General Public License (LGPL) version 3 or later
+   - Source: https://github.com/FFmpeg/FFmpeg/tree/5048d707a
+   - Note: Statically included in libmpv-2.dll by the selected LGPL SDK build.
+   - Build distribution: https://github.com/zhongfly/mpv-winbuild
+   - License copies: licenses/FFmpeg-LGPL-3.0.txt and licenses/GPL-3.0.txt
 
 3. libass
    - License: ISC License
@@ -30,6 +32,16 @@ This software uses the following open-source libraries:
 6. Naver NanumSquare Font (나눔스퀘어)
    - Copyright (c) NAVER Corp. (https://hangeul.naver.com)
    - License: SIL Open Font License, Version 1.1 (http://scripts.sil.org/OFL)
+
+7. cJSON
+   - Copyright (c) 2009-2017 Dave Gamble and cJSON contributors
+   - License: MIT
+   - Source: https://github.com/DaveGamble/cJSON/tree/v1.7.19
+
+8. libwebsockets
+   - License: MIT and included permissive-license notices
+   - Source: https://github.com/warmcat/libwebsockets
+   - License copies: licenses/libwebsockets.txt and licenses/libwebsockets-NOTICE.txt
 
 --------------------------------------------------------------------------------
 GNU LESSER GENERAL PUBLIC LICENSE

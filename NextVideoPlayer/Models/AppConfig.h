@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Models/ApiSettings.h"
+
 struct AppConfig
 {
     bool repeatEnabled = false;
@@ -10,5 +12,6 @@ struct AppConfig
     bool topMost = false;
     bool subtitleVisible = true;
     double subtitleScale = 1.0;
+    ApiSettings api;
 };
 

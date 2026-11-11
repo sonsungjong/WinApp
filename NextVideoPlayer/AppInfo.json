@@ -1,0 +1,32 @@
+{
+  "developer": "SUNGJONG",
+  "email": "tjdwhd70599@gmail.com",
+  "youtubeUrl": "",
+  "description": "Windows용 무료 동영상 플레이어",
+  "usage": "NextVideoPlayer는 무료로 사용할 수 있습니다. 포함된 외부 구성요소에는 각 구성요소의 라이선스가 적용됩니다.",
+  "minimumRequirements": [
+    "운영체제  Windows 10 2004(빌드 19041) 이상 또는 Windows 11, x64",
+    "프로세서  x64 2코어 이상",
+    "메모리  시스템 RAM 4GB 이상",
+    "그래픽  Direct3D 11 렌더링을 지원하는 GPU 및 드라이버",
+    "저장공간  설치와 업데이트를 위한 여유 공간 500MB 이상",
+    "화면  1024 × 768 이상"
+  ],
+  "recommendedRequirements": [
+    "운영체제  Windows 11, x64",
+    "프로세서  x64 4코어 이상",
+    "메모리  시스템 RAM 8GB 이상, 다중 실행 시 16GB 이상",
+    "그래픽  재생할 코덱과 해상도의 하드웨어 디코딩을 지원하는 GPU",
+    "저장장치  SSD 및 재생할 영상에 충분한 여유 공간",
+    "화면  1920 × 1080 이상"
+  ],
+  "requirementsNote": "운영체제와 x64 조건은 배포 패키지의 실행 조건입니다. CPU·RAM·화면 수치는 성능 검증 전의 사용 안내안입니다. 실제 필요 자원은 영상의 해상도·코덱·배속·동시 실행 수에 따라 달라집니다. 영상 파일의 저장공간은 별도로 필요합니다.",
+  "thirdPartyNotices": [
+    "재생  libmpv, FFmpeg 및 포함 미디어 라이브러리 (LGPL·ISC 등)",
+    "JSON  cJSON (MIT)",
+    "WebSocket  libwebsockets (MIT 및 포함 고지)",
+    "폰트  나눔스퀘어 (SIL Open Font License 1.1)",
+    "런타임  Microsoft Visual C++ Runtime, Vulkan Loader"
+  ],
+  "licenseNote": "라이선스 버튼에서 주요 고지 전문을 확인할 수 있습니다. 배포 패키지의 licenses 폴더에는 추가 런타임 고지와 구성요소 출처 정보가 포함됩니다."
+}

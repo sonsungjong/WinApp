@@ -3,6 +3,14 @@
 #define IDS_APP_TITLE               103
 #define IDI_NEXTVIDEOPLAYER         107
 #define IDC_NEXTVIDEOPLAYER         109
+#define IDR_APP_INFO               150
+#define IDR_OSS_LICENSE            151
+#define IDR_CJSON_LICENSE          152
+#define IDR_LWS_LICENSE            153
+#define IDR_LWS_NOTICE             154
+#define IDR_FONT_LICENSE           155
+#define IDR_FFMPEG_LGPL_LICENSE    156
+#define IDR_GPL3_LICENSE           157
 
 #define IDM_FILE_OPEN               201
 #define IDM_SUBTITLE_OPEN           202

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Views/ISettingsView.h"
+#include "Models/AppInfo.h"
 #include <d2d1.h>
 #include <dwrite.h>
 #include <dwrite_3.h>
@@ -11,11 +12,20 @@
 class SettingsView : public ISettingsView
 {
 public:
-    explicit SettingsView(HFONT dialogFont = nullptr);
-    ~SettingsView() override;
+  explicit SettingsView(const AppInfo& appInfo, HFONT dialogFont = nullptr);
+  ~SettingsView() override;
 
-    bool ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConfig& initialConfig) override;
-    AppConfig ReadFormValues(const AppConfig& baseConfig) const override;
+  bool ShowModal(HINSTANCE hInstance, HWND parentHwnd, const AppConfig& initialConfig) override;
+  AppConfig ReadFormValues(const AppConfig& baseConfig) const override;
+  bool TryReadFormValues(const AppConfig& baseConfig, AppConfig& result) override;
+  void SetApiStatusProvider(std::function<std::wstring()> provider) override
+  {
+      m_apiStatus = std::move(provider);
+  }
+  void SetOnApiPageRequested(std::function<void()> handler) override
+  {
+      m_onApiPage = std::move(handler);
+  }
     void CloseModal(bool accepted) override;
 
     void SetOnSaveClicked(std::function<void()> handler) override;
@@ -67,6 +77,12 @@ private:
     int HitTest(float x, float y) const;
     void ExecuteControl(int controlId);
     void DispatchParentCommand(int commandId, bool closeAfter = false);
+    bool CreateApiEditors();
+    void UpdateTabVisibility();
+    void CopyApiAddress();
+    bool CreateInfoEditor();
+    void ToggleLicenses();
+    void OpenInfoLink(const std::wstring& target);
 
     AppConfig m_initialConfig{};
     AppConfig m_currentConfig{};
@@ -77,6 +93,15 @@ private:
     HWND m_hWnd = nullptr;
     HWND m_parentHwnd = nullptr;
     HINSTANCE m_hInstance = nullptr;
+    HFONT m_dialogFont = nullptr;
+    HBRUSH m_editBackground = nullptr;
+    HWND m_ipEdit = nullptr, m_portEdit = nullptr;
+    HWND m_infoEdit = nullptr;
+    const AppInfo& m_appInfo;
+    bool m_showingLicenses = false;
+    std::function<std::wstring()> m_apiStatus;
+    std::function<void()> m_onApiPage;
+    ULONGLONG m_apiCopiedUntil = 0;
 
     int m_activeTab = 1; // Default to Playback tab (matches view_settings.png!)
     int m_hoveredId = -1;

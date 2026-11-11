@@ -2,6 +2,7 @@
 #include "App.h"
 #include <exception>
 #include "Models/ConfigService.h"
+#include "Models/AppInfo.h"
 #include "Models/ControlBarModel.h"
 #include "Models/PlaylistModel.h"
 #include "Models/VideoModel.h"
@@ -16,6 +17,9 @@
 #include "Views/PlaylistView.h"
 #include "Views/SettingsView.h"
 #include "Views/VideoPlayerView.h"
+#include "Services/Api/ApiService.h"
+#include "Services/Api/PlayerControlService.h"
+#include <filesystem>
 
 namespace
 {
@@ -57,15 +61,32 @@ try
     ComApartment com;
     if (!com.IsInitialized()) return 1;
     FontHelper::Resources fonts;
+    const AppInfo appInfo = AppInfo::Load(hInstance);
 
-    ConfigService configService;
+    // --config allows independent settings/ports for multiple player processes.
+    std::wstring configPath;
+    std::vector<std::wstring> commandLineFiles;
+    int argumentCount = 0;
+    auto** arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);
+    if (arguments)
+    {
+        for (int i = 1; i < argumentCount; ++i)
+        {
+            if (std::wstring(arguments[i]) == L"--config" && i + 1 < argumentCount)
+                configPath = std::filesystem::absolute(arguments[++i]).wstring();
+            else if (std::wstring(arguments[i]).rfind(L"--", 0) != 0)
+                commandLineFiles.push_back(std::filesystem::absolute(arguments[i]).wstring());
+        }
+        LocalFree(arguments);
+    }
+    ConfigService configService = configPath.empty() ? ConfigService() : ConfigService(configPath);
     AppConfig config = configService.Load();
     VideoModel videoModel;
     ControlBarModel controlBarModel;
     PlaylistModel playlistModel;
 
     ControlBarView controlBarView;
-    SettingsView settingsView(fonts.GetDialogFont());
+    SettingsView settingsView(appInfo, fonts.GetDialogFont());
     PlaylistView playlistView(fonts.GetDialogFont());
     MainView mainView;
     VideoPlayerView videoPlayerView(controlBarView);
@@ -82,10 +103,55 @@ try
         controlBarPresenter, settingsPresenter, playlistPresenter);
     MainPresenter mainPresenter(mainView, videoPlayerPresenter);
     if (!mainPresenter.Initialize()) return 1;
+    if (!commandLineFiles.empty())
+        playlistPresenter.OpenFiles(commandLineFiles);
+
+    std::unique_ptr<PlayerControlService> control;
+    std::unique_ptr<UiDispatcher> dispatcher;
+    std::unique_ptr<ApiService> api;
+    try
+    {
+        control = std::make_unique<PlayerControlService>(
+            videoModel, playlistModel, playlistPresenter, mainView, config,
+            [&](bool save) { videoPlayerPresenter.RefreshFromExternalControl(save); });
+        dispatcher = std::make_unique<UiDispatcher>();
+        api = std::make_unique<ApiService>(
+            *dispatcher, [&](const Api::Command& command) { return control->Execute(command); },
+            [&](bool includeFiles) { return control->Capture(includeFiles); });
+        api->Configure(config.api);
+    }
+    catch (const std::exception& error)
+    {
+        OutputDebugStringA(error.what());
+    }
+    settingsPresenter.SetApiStatusProvider([&]() { return api ? api->Status() : L"API를 초기화할 수 없습니다."; });
+    settingsPresenter.SetOnApiPageRequested([&]() {
+        if (api)
+        {
+            api->Configure(config.api);
+            api->OpenControlPage();
+        }
+    });
 
     AppTimer timer(mainView.GetHwnd());
     if (!timer.GetId()) return 1;
-    mainView.SetOnTimer([&](UINT_PTR id) { if (id == timer.GetId()) mainPresenter.Tick(); });
+    mainView.SetOnTimer([&](UINT_PTR id) {
+        if (id != timer.GetId())
+            return;
+        mainPresenter.Tick();
+        if (api)
+            try
+            {
+                control->Tick();
+                api->Configure(config.api);
+                api->Tick();
+            }
+            catch (const std::exception& error)
+            {
+                OutputDebugStringA(error.what());
+                api->Stop();
+            }
+    });
     mainView.Show(nCmdShow);
 
     MSG message{};
@@ -96,6 +162,8 @@ try
         DispatchMessageW(&message);
     }
     mainView.SetOnTimer({});
+    if (api)
+        api->Stop();
     return result == -1 ? 1 : static_cast<int>(message.wParam);
 }
 catch (const std::exception& error)

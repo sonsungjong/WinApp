@@ -22,6 +22,7 @@ public:
     void HandleShellDropFiles(HDROP hDrop);
     void OnShellFullscreenChanged(bool fullscreen);
     void OnShellActivationChanged(bool active);
+    void RefreshFromExternalControl(bool saveSettings) { OnPlaybackChanged(saveSettings); }
 
 private:
     void ApplyConfig();

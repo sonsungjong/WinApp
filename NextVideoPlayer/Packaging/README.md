@@ -3,6 +3,24 @@
 이 구성은 패키지를 로컬에서 빌드하고 검증한다. 스토어 등록, 인증서 설치,
 GitHub 저장소 생성 및 릴리스 공개는 자동 실행하지 않는다.
 
+## 더블클릭으로 만들기
+
+개발 PC에서 프로젝트 폴더의 **[artifacts_packages.exe](../artifacts_packages.exe)**를 더블클릭한다.
+실행파일 위치를 기준으로 최신 Release/x64를 빌드하고, MSI와 MSIX를 함께 생성한 뒤
+패키지 내용과 DLL 로딩을 검증한다. 성공하면 결과 폴더를 탐색기로 연다.
+명령어 입력이나 작업 폴더 이동은 필요 없다. 실패하면 오류 창이 유지된다.
+
+결과: `artifacts/packages/<버전>/store/`
+
+- `NextVideoPlayer-<버전>-x64.msi`: USB로 옮겨 다른 PC에 설치할 파일
+- `NextVideoPlayer-<버전>-x64.msix`: Microsoft Store 제출용 파일
+- `SHA256SUMS.txt`, `build-info.json`: 체크섬과 빌드 기록
+
+실행파일은 프로젝트 폴더에 둔다. 같은 폴더를 가리키는 바로가기로 실행해도 된다.
+아래 개발 도구는 패키지를 만드는 PC에 필요하며, MSI를 설치하는 다른 PC에는 필요 없다.
+런처 소스는 `Build-PackagesLauncher.cpp`이며, 수정 후에는 Visual Studio에서
+`Build-PackagesLauncher.vcxproj`를 Release/x64로 빌드하면 실행파일을 다시 만든다.
+
 ## 준비
 
 - Windows 10 2004 이상 또는 Windows 11, x64

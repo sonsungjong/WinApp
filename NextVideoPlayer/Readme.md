@@ -4,6 +4,8 @@ C++ WinAPI 기반의 MVP 패턴으로 개발 (Model-View-Presenter)
 
 MSI·MSIX 빌드 및 Microsoft Store/GitHub Release 배포 준비: [패키징 안내](Packaging/README.md)
 
+개발 PC에서 **[artifacts_packages.exe](artifacts_packages.exe)**를 더블클릭하면 MSI·MSIX 생성과 검증을 마치고 결과 폴더를 엽니다.
+
 외부 프로그램에서 재생을 제어하는 libwebsockets API를 지원합니다. 환경설정의 API 탭에서 켠 뒤 제어화면을 열면 브라우저에서 바로 사용할 수 있습니다. 기본 주소는 `ws://127.0.0.1:49152/api/v1`이며 처음에는 꺼져 있습니다. [API 사용 안내](API/README.md)
 
 환경설정의 정보 탭에서 버전, 개발자 SUNGJONG, 문의 이메일, 시스템 사양 안내와 외부 라이브러리 라이선스를 확인할 수 있습니다. 표시할 정보는 `AppInfo.json`에서 관리하며 빌드 시 실행 파일에 포함합니다. CPU·RAM·화면의 최소·권장 수치는 성능 검증 전의 안내안으로 표시합니다.

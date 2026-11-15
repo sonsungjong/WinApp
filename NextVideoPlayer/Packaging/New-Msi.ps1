@@ -89,6 +89,8 @@ function New-PlayerMsi {
 
     try {
         $database = Invoke-MsiMethod $installer 'OpenDatabase' @($OutputPath,3)
+        "`r`n`r`n949`t_ForceCodepage`r`n" | Set-Content -LiteralPath (Join-Path $WorkDirectory '_ForceCodepage.idt') -Encoding ascii
+        $null = Invoke-MsiMethod $database 'Import' @($WorkDirectory,'_ForceCodepage.idt')
         $schema = @(
             'CREATE TABLE `Property` (`Property` CHAR(72) NOT NULL, `Value` CHAR(0) NOT NULL LOCALIZABLE PRIMARY KEY `Property`)',
             'CREATE TABLE `Directory` (`Directory` CHAR(72) NOT NULL, `Directory_Parent` CHAR(72), `DefaultDir` CHAR(255) NOT NULL LOCALIZABLE PRIMARY KEY `Directory`)',
@@ -128,19 +130,25 @@ function New-PlayerMsi {
             UpgradeCode = $Config.MsiUpgradeCode
             ProductName = $Config.DisplayName
             ProductVersion = $productVersion
-            ProductLanguage = '1033'
+            ProductLanguage = '1042'
             Manufacturer = $Config.Manufacturer
             INSTALLLEVEL = '1'
             ARPNOMODIFY = '1'
             ARPPRODUCTICON = 'AppIcon'
             REBOOT = 'ReallySuppress'
-            SecureCustomProperties = 'OLDPRODUCTS;NEWERPRODUCTS;INSTALLFOLDER;NVP_PREVIOUS_INSTALLFOLDER;NVP_WINDOWS_BUILD'
+            ALLUSERS = '2'
+            MSIINSTALLPERUSER = '1'
+            NVP_SETUP_SCOPE = 'user'
+            NVP_INSTALL_SUBDIR = 'NextVideoPlayer'
+            NVP_CREATE_DESKTOP = '1'
+            DefaultUIFont = 'Normal'
+            SecureCustomProperties = 'OLDPRODUCTS;NEWERPRODUCTS;ALLUSERS;MSIINSTALLPERUSER;INSTALLFOLDER;NVP_PREVIOUS_INSTALLFOLDER;NVP_MACHINE_INSTALLFOLDER;NVP_USER_DESKTOP;NVP_MACHINE_DESKTOP;NVP_CREATE_DESKTOP;NVP_OPTIONS_SET;NVP_WINDOWS_BUILD'
         }
         foreach ($entry in $properties.GetEnumerator()) { Add-MsiRow 'Property' @($entry.Key,$entry.Value) }
         Add-MsiRow 'Directory' @('TARGETDIR',$null,'SourceDir')
-        Add-MsiRow 'Directory' @('LocalAppDataFolder','TARGETDIR','.')
-        Add-MsiRow 'Directory' @('AppProgramsFolder','LocalAppDataFolder','Programs')
-        Add-MsiRow 'Directory' @('INSTALLFOLDER','AppProgramsFolder','NextVideoPlayer')
+        Add-MsiRow 'Directory' @('ProgramFiles64Folder','TARGETDIR','.')
+        Add-MsiRow 'Directory' @('INSTALLFOLDER','ProgramFiles64Folder','NextVideoPlayer')
+        Add-MsiRow 'Directory' @('DesktopFolder','TARGETDIR','.')
         Add-MsiRow 'Directory' @('ProgramMenuFolder','TARGETDIR','.')
         Add-MsiRow 'Directory' @('AppMenuFolder','ProgramMenuFolder','NextVideoPlayer')
         Add-MsiRow 'Feature' @('MainFeature',$null,$Config.DisplayName,$Config.Description,1,1,'INSTALLFOLDER',0)
@@ -162,9 +170,9 @@ function New-PlayerMsi {
             }
             $fileId = 'F{0:D4}' -f ($i + 1); $componentId = 'C{0:D4}' -f ($i + 1)
             $registryId = 'R{0:D4}' -f ($i + 1)
-            # Per-user components need an HKCU key path, including file components.
+            # Root -1 follows the selected user/machine installation context.
             Add-MsiRow 'Component' @($componentId,(Get-StableMsiGuid "Component:$relative"),$parentId,260,$null,$registryId)
-            Add-MsiRow 'Registry' @($registryId,1,'Software\NextVideoPlayer\Installer\Components',$relative,'#1',$componentId)
+            Add-MsiRow 'Registry' @($registryId,-1,'Software\NextVideoPlayer\Installer\Components',$relative,'#1',$componentId)
             Add-MsiRow 'FeatureComponents' @('MainFeature',$componentId)
             $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($file.FullName).FileVersion
             if ($fileVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') { $fileVersion = $null }
@@ -183,19 +191,42 @@ function New-PlayerMsi {
         foreach ($directoryId in $directories.Values) { Add-MsiRow 'CreateFolder' @($directoryId,'C0001') }
         Add-MsiRow 'Component' @('StartMenu',(Get-StableMsiGuid 'Component:StartMenu'),'AppMenuFolder',260,$null,'InstalledMarker')
         Add-MsiRow 'FeatureComponents' @('MainFeature','StartMenu')
-        Add-MsiRow 'Registry' @('InstalledMarker',1,'Software\NextVideoPlayer\Installer','Installed','#1','StartMenu')
+        Add-MsiRow 'Registry' @('InstalledMarker',-1,'Software\NextVideoPlayer\Installer','Installed','#1','StartMenu')
         # Remember the selected directory for repair, upgrade and uninstall.
         # Registry key paths do not let MSI infer an overridden INSTALLFOLDER.
-        Add-MsiRow 'Registry' @('InstallDirectory',1,'Software\NextVideoPlayer\Installer','InstallDirectory','[INSTALLFOLDER]','StartMenu')
+        Add-MsiRow 'Registry' @('InstallDirectory',-1,'Software\NextVideoPlayer\Installer','InstallDirectory','[INSTALLFOLDER]','StartMenu')
+        Add-MsiRow 'Registry' @('DesktopChoice',-1,'Software\NextVideoPlayer\Installer','DesktopShortcut','[NVP_DESKTOP_STATE]','StartMenu')
         Add-MsiRow 'AppSearch' @('NVP_PREVIOUS_INSTALLFOLDER','PreviousInstallLocation')
         Add-MsiRow 'RegLocator' @('PreviousInstallLocation',1,'Software\NextVideoPlayer\Installer','InstallDirectory',18)
+        Add-MsiRow 'AppSearch' @('NVP_MACHINE_INSTALLFOLDER','MachineInstallLocation')
+        Add-MsiRow 'RegLocator' @('MachineInstallLocation',2,'Software\NextVideoPlayer\Installer','InstallDirectory',18)
+        Add-MsiRow 'AppSearch' @('NVP_USER_DESKTOP','UserDesktopChoice')
+        Add-MsiRow 'RegLocator' @('UserDesktopChoice',1,'Software\NextVideoPlayer\Installer','DesktopShortcut',18)
+        Add-MsiRow 'AppSearch' @('NVP_MACHINE_DESKTOP','MachineDesktopChoice')
+        Add-MsiRow 'RegLocator' @('MachineDesktopChoice',2,'Software\NextVideoPlayer\Installer','DesktopShortcut',18)
+        # ProgramFiles64Folder is redirected at session initialization. Keep the
+        # actual machine folder available when the user changes scope in the UI.
+        Add-MsiRow 'AppSearch' @('NVP_MACHINE_PROGRAMS','MachineProgramFiles')
+        Add-MsiRow 'RegLocator' @('MachineProgramFiles',2,'SOFTWARE\Microsoft\Windows\CurrentVersion','ProgramFilesDir',18)
         Add-MsiRow 'AppSearch' @('NVP_WINDOWS_BUILD','WindowsBuild')
         Add-MsiRow 'RegLocator' @('WindowsBuild',2,'SOFTWARE\Microsoft\Windows NT\CurrentVersion','CurrentBuildNumber',18)
         Add-MsiRow 'CustomAction' @('RestoreInstallDirectory',51,'INSTALLFOLDER','[NVP_PREVIOUS_INSTALLFOLDER]',$null)
+        Add-MsiRow 'CustomAction' @('RestoreMachineDirectory',51,'INSTALLFOLDER','[NVP_MACHINE_INSTALLFOLDER]',$null)
+        Add-MsiRow 'CustomAction' @('InitializeMachineScope',51,'NVP_SETUP_SCOPE','machine',$null)
+        Add-MsiRow 'CustomAction' @('InitializeMachineDirectory',51,'INSTALLFOLDER','[NVP_MACHINE_PROGRAMS]\[NVP_INSTALL_SUBDIR]',$null)
+        Add-MsiRow 'CustomAction' @('RestoreDesktopEnabled',51,'NVP_CREATE_DESKTOP','1',$null)
+        Add-MsiRow 'CustomAction' @('RestoreDesktopDisabled',51,'NVP_CREATE_DESKTOP',$null,$null)
+        Add-MsiRow 'CustomAction' @('RememberDesktopEnabled',51,'NVP_DESKTOP_STATE','1',$null)
+        Add-MsiRow 'CustomAction' @('RememberDesktopDisabled',51,'NVP_DESKTOP_STATE','0',$null)
         Add-MsiRow 'CustomAction' @('SetArpInstallLocation',51,'ARPINSTALLLOCATION','[INSTALLFOLDER]',$null)
         Add-MsiRow 'Shortcut' @('AppShortcut','AppMenuFolder','NVP|NextVideoPlayer','StartMenu',
             '[INSTALLFOLDER]NextVideoPlayer.exe',$null,$Config.Description,$null,'AppIcon',0,1,'INSTALLFOLDER',$null,$null,$null,$null)
         Add-MsiRow 'RemoveFile' @('RemoveAppMenu','StartMenu',$null,'AppMenuFolder',2)
+        Add-MsiRow 'Component' @('DesktopShortcut',(Get-StableMsiGuid 'Component:DesktopShortcut'),'DesktopFolder',324,'NVP_CREATE_DESKTOP = "1"','DesktopMarker')
+        Add-MsiRow 'FeatureComponents' @('MainFeature','DesktopShortcut')
+        Add-MsiRow 'Registry' @('DesktopMarker',-1,'Software\NextVideoPlayer\Installer','DesktopShortcutInstalled','#1','DesktopShortcut')
+        Add-MsiRow 'Shortcut' @('DesktopShortcut','DesktopFolder','NVP|NextVideoPlayer','DesktopShortcut',
+            '[INSTALLFOLDER]NextVideoPlayer.exe',$null,$Config.Description,$null,'AppIcon',0,1,'INSTALLFOLDER',$null,$null,$null,$null)
         Add-MsiRow 'Media' @(1,$files.Count,$null,'#payload.cab',$null,$null)
         Add-MsiStream 'Icon' 'AppIcon' (Join-Path $PayloadDirectory 'NextVideoPlayer.ico')
         Add-MsiStream '_Streams' 'payload.cab' (Join-Path $cabDirectory 'payload.cab')
@@ -204,25 +235,41 @@ function New-PlayerMsi {
         $minBuild = ([version]$Config.MinWindowsVersion).Build
         Add-MsiRow 'LaunchCondition' @("Installed OR (VersionNT64 AND NVP_WINDOWS_BUILD >= $minBuild)",'NextVideoPlayer requires 64-bit Windows 10 2004 or later.')
         Add-MsiRow 'LaunchCondition' @('Installed OR NOT NEWERPRODUCTS','A newer version of NextVideoPlayer is already installed.')
-        $executeActions = [ordered]@{FindRelatedProducts=25;AppSearch=50;RestoreInstallDirectory=70;LaunchConditions=100;ValidateProductID=700;
-            CostInitialize=800;FileCost=900;CostFinalize=1000;SetArpInstallLocation=1100;MigrateFeatureStates=1200;InstallValidate=1400;
+        $userContext = '(NOT ALLUSERS OR (ALLUSERS = "2" AND MSIINSTALLPERUSER = "1"))'
+        $machineContext = '(ALLUSERS = "1" OR (ALLUSERS = "2" AND NOT MSIINSTALLPERUSER))'
+        $conditions = @{
+            RestoreInstallDirectory = "NOT INSTALLFOLDER AND NVP_PREVIOUS_INSTALLFOLDER AND $userContext"
+            RestoreMachineDirectory = "NOT INSTALLFOLDER AND NVP_MACHINE_INSTALLFOLDER AND $machineContext"
+            RestoreDesktopEnabled = "NOT NVP_OPTIONS_SET AND (($userContext AND NVP_USER_DESKTOP = `"1`") OR ($machineContext AND NVP_MACHINE_DESKTOP = `"1`"))"
+            RestoreDesktopDisabled = "NOT NVP_OPTIONS_SET AND (($userContext AND NVP_USER_DESKTOP = `"0`") OR ($machineContext AND NVP_MACHINE_DESKTOP = `"0`"))"
+            RememberDesktopEnabled = 'NVP_CREATE_DESKTOP = "1"'
+            RememberDesktopDisabled = 'NOT NVP_CREATE_DESKTOP OR NVP_CREATE_DESKTOP <> "1"'
+            RemoveExistingProducts = 'OLDPRODUCTS'
+        }
+        $executeActions = [ordered]@{FindRelatedProducts=25;AppSearch=50;LaunchConditions=100;ValidateProductID=700;
+            RestoreInstallDirectory=710;RestoreMachineDirectory=715;RestoreDesktopEnabled=720;RestoreDesktopDisabled=725;
+            CostInitialize=800;FileCost=900;CostFinalize=1000;SetArpInstallLocation=1100;RememberDesktopEnabled=1150;RememberDesktopDisabled=1155;MigrateFeatureStates=1200;InstallValidate=1400;
             InstallInitialize=1500;RemoveExistingProducts=1510;ProcessComponents=1600;UnpublishFeatures=1800;
             RemoveRegistryValues=2600;RemoveShortcuts=3200;RemoveFiles=3500;RemoveFolders=3600;
             CreateFolders=3700;InstallFiles=4000;CreateShortcuts=4500;WriteRegistryValues=5000;
             RegisterUser=6000;RegisterProduct=6100;PublishFeatures=6300;PublishProduct=6400;InstallFinalize=6600}
         foreach ($action in $executeActions.GetEnumerator()) {
-            $condition = switch ($action.Key) {
-                'RemoveExistingProducts' { 'OLDPRODUCTS' }
-                'RestoreInstallDirectory' { 'NOT INSTALLFOLDER AND NVP_PREVIOUS_INSTALLFOLDER' }
-                default { $null }
-            }
+            $condition = $conditions[$action.Key]
             Add-MsiRow 'InstallExecuteSequence' @($action.Key,$condition,$action.Value)
         }
-        foreach ($action in ([ordered]@{FindRelatedProducts=25;AppSearch=50;RestoreInstallDirectory=70;LaunchConditions=100;ValidateProductID=700;
-            CostInitialize=800;FileCost=900;CostFinalize=1000;ExecuteAction=1300}).GetEnumerator()) {
-            $condition = if ($action.Key -eq 'RestoreInstallDirectory') { 'NOT INSTALLFOLDER AND NVP_PREVIOUS_INSTALLFOLDER' } else { $null }
+        $conditions.InitializeMachineScope = $machineContext
+        $conditions.InitializeMachineDirectory = "NOT INSTALLFOLDER AND NVP_MACHINE_PROGRAMS AND $machineContext"
+        $conditions.ScopeDlg = 'NOT Installed AND UILevel = 5'
+        $conditions.InstallDirDlg = 'NOT Installed AND UILevel = 5'
+        $conditions.MaintenanceDlg = 'Installed AND NOT REMOVE AND NOT REINSTALL AND UILevel = 5'
+        $conditions.ProgressDlg = 'UILevel = 5'
+        foreach ($action in ([ordered]@{FindRelatedProducts=25;AppSearch=50;InitializeMachineScope=60;LaunchConditions=100;
+            ScopeDlg=600;ValidateProductID=700;RestoreInstallDirectory=710;RestoreMachineDirectory=715;RestoreDesktopEnabled=720;RestoreDesktopDisabled=725;InitializeMachineDirectory=730;
+            CostInitialize=800;FileCost=900;CostFinalize=1000;InstallDirDlg=1100;MaintenanceDlg=1150;ProgressDlg=1250;ExecuteAction=1300}).GetEnumerator()) {
+            $condition = $conditions[$action.Key]
             Add-MsiRow 'InstallUISequence' @($action.Key,$condition,$action.Value)
         }
+        . "$PSScriptRoot\Msi-UserInterface.ps1"
         foreach ($action in ([ordered]@{CostInitialize=800;FileCost=900;CostFinalize=1000;
             InstallValidate=1400;InstallInitialize=1500;InstallAdminPackage=3900;InstallFiles=4000;InstallFinalize=6600}).GetEnumerator()) {
             Add-MsiRow 'AdminExecuteSequence' @($action.Key,$null,$action.Value)
@@ -232,8 +279,8 @@ function New-PlayerMsi {
         }
         $summary = $database.GetType().InvokeMember('SummaryInformation',[Reflection.BindingFlags]::GetProperty,$null,$database,@(20))
         try {
-            foreach ($entry in (@{2='Installation Database';3=$Config.DisplayName;4=$Config.Manufacturer;
-                7='x64;1033';9=([guid]::NewGuid().ToString('B').ToUpperInvariant());14=500;15=10;18='NextVideoPlayer Packaging'}).GetEnumerator()) {
+            foreach ($entry in (@{1=949;2='Installation Database';3=$Config.DisplayName;4=$Config.Manufacturer;
+                7='x64;1042';9=([guid]::NewGuid().ToString('B').ToUpperInvariant());14=500;15=2;18='NextVideoPlayer Packaging'}).GetEnumerator()) {
                 Set-MsiProperty $summary 'Property' @([int]$entry.Key,$entry.Value)
             }
             $null = Invoke-MsiMethod $summary 'Persist'

@@ -2,11 +2,14 @@
 # Explicit integration test: installs isolated validation copies, never the actual
 # product ID, and uninstalls them in finally. The player is never launched.
 [CmdletBinding()]
-param([string]$PackageDirectory)
+param([string]$PackageDirectory,
+      [ValidateSet('User','Machine')][string]$Scope = 'User',
+      [ValidateSet('0','1')][string]$DesktopShortcut = '1',
+      [switch]$PrepareOnly)
 . "$PSScriptRoot\Common.ps1"
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $version = Get-AppVersion $projectRoot
-if (-not $PackageDirectory) { $PackageDirectory = Join-Path $projectRoot "artifacts\packages\$($version.ToString(3))" }
+if (-not $PackageDirectory) { $PackageDirectory = Join-Path $projectRoot "artifacts\packages\$($version.ToString(3))\store" }
 $info = Get-Content -LiteralPath (Join-Path $PackageDirectory 'build-info.json') -Raw | ConvertFrom-Json
 $source = @($info.Packages | Where-Object { [IO.Path]::GetExtension($_) -eq '.msi' })
 if ($source.Count -ne 1) { throw 'Build an MSI package first.' }
@@ -19,6 +22,15 @@ $products = @([guid]::NewGuid().ToString('B').ToUpperInvariant(),[guid]::NewGuid
 $upgradeCode = [guid]::NewGuid().ToString('B').ToUpperInvariant()
 $componentGuids = @{}
 $installer = New-Object -ComObject WindowsInstaller.Installer
+if ($Scope -eq 'Machine' -and -not $PrepareOnly -and
+    -not ([Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Run the Machine-scope lifecycle test from an elevated process.'
+}
+$shortcutName = "NVP Packaging Validation $testId"
+$desktopDirectory = [Environment]::GetFolderPath($(if ($Scope -eq 'Machine') { 'CommonDesktopDirectory' } else { 'DesktopDirectory' }))
+$desktopLink = Join-Path $desktopDirectory ($shortcutName + '.lnk')
+$programsDirectory = [Environment]::GetFolderPath($(if ($Scope -eq 'Machine') { 'CommonPrograms' } else { 'Programs' }))
+$startMenuLink = Join-Path $programsDirectory ($shortcutName + '\' + $shortcutName + '.lnk')
 function Invoke-Com($Object,[string]$Name,[object[]]$Arguments=@()) {
     $raw = [object[]]::new($Arguments.Count)
     for ($i = 0; $i -lt $Arguments.Count; ++$i) { $raw[$i] = $Arguments[$i].PSObject.BaseObject }
@@ -66,7 +78,7 @@ try {
         try {
             $productVersion = '{0}.{1}.{2}' -f $version.Major,$version.Minor,($version.Build + $index)
             foreach ($entry in (@{ProductCode=$products[$index];UpgradeCode=$upgradeCode;
-                ProductVersion=$productVersion;ProductName="NextVideoPlayer Packaging Validation $testId"}).GetEnumerator()) {
+                ProductVersion=$productVersion;ProductName="NextVideoPlayer Packaging Validation $testId";NVP_INSTALL_SUBDIR=$shortcutName}).GetEnumerator()) {
                 Execute-Sql $database ('UPDATE `Property` SET `Value`='''+$entry.Value+''' WHERE `Property`='''+$entry.Key+'''')
             }
             Execute-Sql $database 'DELETE FROM `Upgrade`'
@@ -76,7 +88,8 @@ try {
             Execute-Sql $database ('UPDATE `Directory` SET `DefaultDir`=''NVPTEST|NVP Packaging Validation '+$testId+''' WHERE `Directory`=''AppMenuFolder''')
             Execute-Sql $database ('UPDATE `Directory` SET `DefaultDir`=''NVPTEST|NVP Packaging Validation '+$testId+''' WHERE `Directory`=''INSTALLFOLDER''')
             Execute-Sql $database ('UPDATE `Registry` SET `Key`=''Software\NextVideoPlayer\PackagingValidation\'+$testId+'''')
-            Execute-Sql $database ('UPDATE `RegLocator` SET `Key`=''Software\NextVideoPlayer\PackagingValidation\'+$testId+''' WHERE `Signature_`=''PreviousInstallLocation''')
+            Execute-Sql $database ('UPDATE `RegLocator` SET `Key`=''Software\NextVideoPlayer\PackagingValidation\'+$testId+''' WHERE `Signature_`<>''WindowsBuild'' AND `Signature_`<>''MachineProgramFiles''')
+            Execute-Sql $database ('UPDATE `Shortcut` SET `Name`=''NVPTEST|'+$shortcutName+'''')
             $view = Invoke-Com $database 'OpenView' @('SELECT `Component` FROM `Component`')
             $components = @()
             try {
@@ -96,14 +109,34 @@ try {
             } finally { Release-Com $summary }
             $null = Invoke-Com $database 'Commit'
         } finally { Release-Com $database }
-        $exitCode = Run-Msi @('/i',('"'+$copy+'"'),('INSTALLFOLDER="'+$installDirectory+'"')) "install-$index.log"
+        if ($PrepareOnly) { continue }
+        $installArguments = @('/i',('"'+$copy+'"'),'ALLUSERS=2',
+            $(if ($Scope -eq 'Machine') { 'MSIINSTALLPERUSER=""' } else { 'MSIINSTALLPERUSER=1' }))
+        if ($index -eq 0) {
+            $installArguments += @(('INSTALLFOLDER="'+$installDirectory+'"'),"NVP_CREATE_DESKTOP=$DesktopShortcut",'NVP_OPTIONS_SET=1')
+        }
+        $exitCode = Run-Msi $installArguments "install-$index.log"
         if ($exitCode -notin 0,3010) { throw "MSI validation installation failed ($exitCode). Logs: $root" }
         foreach ($file in $info.PayloadFiles) {
             if ((Get-FileHash -LiteralPath (Join-Path $installDirectory $file.Path)).Hash -ne $file.Sha256) { throw "Installed file mismatch: $($file.Path)" }
         }
         if ((Get-Com $installer 'ProductState' @($products[$index])) -ne 5) { throw 'Validation product is not registered.' }
         if ($index -eq 1 -and (Get-Com $installer 'ProductState' @($products[0])) -ne -1) { throw 'Upgrade did not remove previous product registration.' }
-        Write-Host "PASS: isolated per-user MSI installation $productVersion, registration and installed file hashes."
+        if ((Test-Path -LiteralPath $desktopLink) -ne ($DesktopShortcut -eq '1')) { throw 'Desktop shortcut selection was not respected.' }
+        if (-not (Test-Path -LiteralPath $startMenuLink)) { throw 'Start menu shortcut was not created in the chosen scope.' }
+        $shell = New-Object -ComObject WScript.Shell
+        try {
+            foreach ($link in @($startMenuLink,$desktopLink) | Where-Object { Test-Path -LiteralPath $_ }) {
+                $shortcut = $shell.CreateShortcut($link)
+                try {
+                    if ($shortcut.TargetPath -ne (Join-Path $installDirectory 'NextVideoPlayer.exe')) { throw "Incorrect shortcut target: $link" }
+                } finally { Release-Com $shortcut }
+            }
+        } finally { Release-Com $shell }
+        $registryRoot = if ($Scope -eq 'Machine') { 'HKLM:' } else { 'HKCU:' }
+        $installedPath = (Get-ItemProperty -LiteralPath "$registryRoot\Software\NextVideoPlayer\PackagingValidation\$testId").InstallDirectory
+        if ($installedPath.TrimEnd('\') -ne $installDirectory.TrimEnd('\')) { throw 'Installation directory was not persisted in the selected registry hive.' }
+        Write-Host "PASS: isolated $Scope MSI $productVersion, desktop=$DesktopShortcut, shortcuts, registration, custom-directory persistence and installed file hashes."
     }
 } finally {
     foreach ($product in $products) {
@@ -114,5 +147,12 @@ try {
     }
     Release-Com $installer
 }
+if ($PrepareOnly) {
+    [ordered]@{Directory=$root;Msi=(Join-Path $root 'validation-0.msi');Products=$products;InstallDirectory=$installDirectory;ShortcutName=$shortcutName} |
+        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'ui-test-info.json') -Encoding utf8
+    Write-Host "Prepared isolated MSI for UI verification: $root"
+    exit 0
+}
 if (Test-Path -LiteralPath (Join-Path $installDirectory 'NextVideoPlayer.exe')) { throw 'Uninstall left the executable installed.' }
+if ((Test-Path -LiteralPath $desktopLink) -or (Test-Path -LiteralPath $startMenuLink)) { throw 'Uninstall left a validation shortcut behind.' }
 Write-Host "PASS: MSI upgrade and uninstall. Player was never launched. Logs: $root"

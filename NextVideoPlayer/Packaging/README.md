@@ -44,15 +44,15 @@ pwsh -NoProfile -File .\Packaging\Build-Packages.ps1 -Target All -ForStore
 
 ## 결과와 버전
 
-`Version.h`가 실행 파일, MSI, MSIX의 공통 버전이다. 초기 버전은 `1.0.0.0`이다.
+`Version.h`가 실행 파일, MSI, MSIX의 공통 버전이다. 현재 버전은 `1.0.1.0`이다.
 MSI 업그레이드를 위해 배포마다 major/minor/patch 중 하나를 올린다.
 Store 제출용 첫 번째 필드는 1 이상, 네 번째 필드는 0으로 유지한다.
 첫 공개 배포 이후 `Package.config.json`의 `MsiUpgradeCode`는 변경하지 않는다.
 
 ```text
-artifacts/packages/1.0.0/store/
-  NextVideoPlayer-1.0.0-x64.msi
-  NextVideoPlayer-1.0.0-x64.msix
+artifacts/packages/1.0.1/store/
+  NextVideoPlayer-1.0.1-x64.msi
+  NextVideoPlayer-1.0.1-x64.msix
   SHA256SUMS.txt
   build-info.json
 ```
@@ -63,9 +63,12 @@ GitHub Release에는 설치 파일과 체크섬을 첨부하면 된다.
 
 ## MSI: GitHub Release용
 
-- 현재 사용자에게 `%LOCALAPPDATA%\Programs\NextVideoPlayer`에 설치한다.
-- 관리자 권한, 전역 폰트 설치, 설치 중 다운로드가 필요하지 않다.
-- 시작 메뉴 바로가기와 Windows 앱 목록의 제거 기능을 등록한다.
+- 더블클릭하면 한국어 설치 마법사에서 **현재 사용자 / 모든 사용자**, **설치 폴더**, **바탕화면 바로가기 생성 여부**를 선택한다.
+- 현재 사용자 설치의 기본 경로는 `%LOCALAPPDATA%\Programs\NextVideoPlayer`이며 관리자 권한이 필요하지 않다.
+- 모든 사용자 설치의 기본 경로는 `%ProgramFiles%\NextVideoPlayer`이며 Windows가 필요한 관리자 승인을 요청한다.
+- 선택한 설치 범위의 시작 메뉴 바로가기와 Windows 앱 목록의 제거 기능을 등록한다. 바탕화면 바로가기는 선택했을 때만 생성한다.
+- DLL과 폰트가 포함되어 있으며 설치 중 다운로드나 전역 폰트 설치가 필요하지 않다.
+- 같은 버전의 MSI를 다시 실행하면 복구 또는 제거를 선택할 수 있다.
 - 버전이 올라가면 같은 UpgradeCode의 이전 MSI를 교체하고 다운그레이드는 차단한다.
 - 설정은 `%LOCALAPPDATA%\NextVideoPlayer\config.ini`에 별도로 저장한다.
   업그레이드·제거 시 설치 프로그램이 사용자 설정을 지우지 않는다.
@@ -115,7 +118,7 @@ MSIX 설정은 `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\config.in
 스토어용 결과를 검증할 때는 해당 폴더를 지정한다.
 
 ```powershell
-pwsh -NoProfile -File .\Packaging\Test-Packages.ps1 -PackageDirectory .\artifacts\packages\1.0.0\store
+pwsh -NoProfile -File .\Packaging\Test-Packages.ps1 -PackageDirectory .\artifacts\packages\1.0.1\store
 ```
 
 ## 선택적 코드 서명
@@ -150,12 +153,17 @@ pwsh -NoProfile -File .\Packaging\Test-Packages.ps1
 서명된 MSIX 설치·재생·업데이트를 확인한다.
 
 MSI의 설치·업그레이드·제거를 로컬에서 검증하려면 다음 통합 테스트를 명시적으로 실행한다.
-테스트 전용 제품·컴포넌트 GUID와 시작 메뉴 폴더를 사용하며, 무인 설치 후 finally에서 제거한다.
+테스트 전용 제품·컴포넌트 GUID와 고유한 시작 메뉴·바탕화면 바로가기를 사용하며, 무인 설치 후 finally에서 제거한다.
 실제 NextVideoPlayer 제품 ID를 설치하거나 플레이어를 실행하지 않는다.
 
 ```powershell
 pwsh -NoProfile -File .\Packaging\Test-MsiLifecycle.ps1
+pwsh -NoProfile -File .\Packaging\Test-MsiLifecycle.ps1 -DesktopShortcut 0
 ```
+
+설치 파일 해시, 바로가기 대상, 선택한 레지스트리 범위, 사용자 지정 경로와 바로가기 선택의
+업그레이드 후 유지, 제거 후 정리를 확인한다. 모든 사용자 설치 검증은 관리자 권한으로
+실행한 셸에서 `-Scope Machine`을 지정한다. `-PrepareOnly`는 실제 제품과 분리된 UI 검증용 MSI만 만든다.
 
 ## 별도 GitHub 배포 저장소
 

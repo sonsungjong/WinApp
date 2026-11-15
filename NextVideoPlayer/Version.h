@@ -5,7 +5,7 @@
 // Store requires a nonzero major version and revision 0.
 #define NVP_VERSION_MAJOR 1
 #define NVP_VERSION_MINOR 0
-#define NVP_VERSION_PATCH 0
+#define NVP_VERSION_PATCH 1
 #define NVP_VERSION_REVISION 0
 
 #define NVP_STRINGIFY_IMPL(value) #value

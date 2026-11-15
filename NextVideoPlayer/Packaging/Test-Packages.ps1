@@ -4,7 +4,7 @@ param([string]$PackageDirectory, [switch]$SkipMsiExtraction)
 . "$PSScriptRoot\Common.ps1"
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $version = Get-AppVersion $projectRoot
-if (-not $PackageDirectory) { $PackageDirectory = Join-Path $projectRoot "artifacts\packages\$($version.ToString(3))" }
+if (-not $PackageDirectory) { $PackageDirectory = Join-Path $projectRoot "artifacts\packages\$($version.ToString(3))\store" }
 $info = Get-Content -LiteralPath (Join-Path $PackageDirectory 'build-info.json') -Raw | ConvertFrom-Json
 $scratch = Join-Path $projectRoot ('artifacts\packaging\verification\' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratch -Force | Out-Null

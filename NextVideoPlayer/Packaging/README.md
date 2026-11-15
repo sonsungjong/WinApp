@@ -10,7 +10,8 @@ GitHub 저장소 생성 및 릴리스 공개는 자동 실행하지 않는다.
 패키지 내용과 DLL 로딩을 검증한다. 성공하면 결과 폴더를 탐색기로 연다.
 명령어 입력이나 작업 폴더 이동은 필요 없다. 실패하면 오류 창이 유지된다.
 
-결과: `artifacts/packages/<버전>/store/`
+결과 폴더는 **`artifacts/packages/<버전>/store/`**다. 런처는 이 폴더에 MSI와 MSIX를
+함께 생성한다. USB로 옮길 MSI도 이 폴더의 파일을 사용한다.
 
 - `NextVideoPlayer-<버전>-x64.msi`: USB로 옮겨 다른 PC에 설치할 파일
 - `NextVideoPlayer-<버전>-x64.msix`: Microsoft Store 제출용 파일
@@ -31,14 +32,13 @@ GitHub 저장소 생성 및 릴리스 공개는 자동 실행하지 않는다.
 MSI는 Windows Installer automation API와 Windows의 MakeCab으로 만든다.
 별도의 Visual Studio 확장이나 WiX 설치는 필요하지 않다.
 
-프로젝트 폴더에서 실행한다.
+명령행에서 동일한 결과를 만들려면 프로젝트 폴더에서 실행한다.
 
 ```powershell
-pwsh -NoProfile -File .\Packaging\Build-Packages.ps1 -Target All
+pwsh -NoProfile -File .\Packaging\Build-Packages.ps1 -Target All -ForStore
 ```
 
-`-Target MSI`, `-Target MSIX`로 하나만 만들 수도 있다. 실행 파일은 Release/x64로
-별도 빌드하고, 필요한 SDK와 폰트는 기존 `setup_sdk.bat`가 준비한다.
+실행 파일은 Release/x64로 별도 빌드하고, 필요한 SDK와 폰트는 기존 `setup_sdk.bat`가 준비한다.
 패키징에 필요한 Vulkan runtime ZIP은 공식 LunarG 서버에서 내려받고
 `Package.config.json`의 고정 SHA256을 확인한다. 캐시는 `artifacts/packaging/cache`다.
 
@@ -50,7 +50,7 @@ Store 제출용 첫 번째 필드는 1 이상, 네 번째 필드는 0으로 유�
 첫 공개 배포 이후 `Package.config.json`의 `MsiUpgradeCode`는 변경하지 않는다.
 
 ```text
-artifacts/packages/1.0.0/
+artifacts/packages/1.0.0/store/
   NextVideoPlayer-1.0.0-x64.msi
   NextVideoPlayer-1.0.0-x64.msix
   SHA256SUMS.txt

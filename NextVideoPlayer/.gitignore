@@ -1,6 +1,4 @@
 /artifacts/
-*.msi
-*.msix
 *.msixbundle
 *.msixupload
 *.cer

@@ -9,7 +9,7 @@ $version = Get-AppVersion $projectRoot
 $packageDirectory = Join-Path $projectRoot "artifacts\packages\$($version.ToString(3))\store"
 
 Write-Host '[1/2] 최신 소스로 MSI와 MSIX를 생성합니다.'
-& "$PSScriptRoot\Build-Packages.ps1" -Target All -ForStore
+& "$PSScriptRoot\Build-Packages.ps1" -Target All -ForStore -OutputDirectory $packageDirectory
 
 Write-Host '[2/2] 설치 파일과 포함된 DLL을 검증합니다.'
 & "$PSScriptRoot\Test-Packages.ps1" -PackageDirectory $packageDirectory

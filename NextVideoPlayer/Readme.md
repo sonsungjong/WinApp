@@ -5,6 +5,7 @@ C++ WinAPI 기반의 MVP 패턴으로 개발 (Model-View-Presenter)
 MSI·MSIX 빌드 및 Microsoft Store/GitHub Release 배포 준비: [패키징 안내](Packaging/README.md)
 
 개발 PC에서 **[artifacts_packages.exe](artifacts_packages.exe)**를 더블클릭하면 MSI·MSIX 생성과 검증을 마치고 결과 폴더를 엽니다.
+결과 파일은 `artifacts/packages/<버전>/store/`에 함께 생성되며, USB로 옮길 MSI도 이 폴더의 파일을 사용합니다.
 
 외부 프로그램에서 재생을 제어하는 libwebsockets API를 지원합니다. 환경설정의 API 탭에서 켠 뒤 제어화면을 열면 브라우저에서 바로 사용할 수 있습니다. 기본 주소는 `ws://127.0.0.1:49152/api/v1`이며 처음에는 꺼져 있습니다. [API 사용 안내](API/README.md)
 

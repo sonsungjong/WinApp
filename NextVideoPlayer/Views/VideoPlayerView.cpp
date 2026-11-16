@@ -2,6 +2,7 @@
 #include "Views/FileDialogs.h"
 #include "Views/FontHelper.h"
 #include "Resource.h"
+#include <imm.h>
 #include <algorithm>
 #include <filesystem>
 
@@ -87,6 +88,7 @@ bool VideoPlayerView::Initialize(HINSTANCE hInstance, HWND parentHwnd)
         return false;
     }
 
+    ImmAssociateContext(m_hWnd, nullptr);
     m_lastMouseActiveTick = GetTickCount64();
 
     const int videoH = (std::max)(0, clientH - kControlBarHeight);
@@ -109,6 +111,7 @@ bool VideoPlayerView::Initialize(HINSTANCE hInstance, HWND parentHwnd)
         return false;
     }
 
+    ImmAssociateContext(m_videoHwnd, nullptr);
     EnableWindow(m_videoHwnd, FALSE);
 
     if (!m_controlBarView.Initialize(hInstance, m_hWnd, 0, videoH, clientW, kControlBarHeight))
@@ -663,7 +666,18 @@ LRESULT VideoPlayerView::HandleMessage(UINT message, WPARAM wParam, LPARAM lPara
     case WM_LBUTTONDOWN:
     case WM_RBUTTONDOWN:
     case WM_MBUTTONDOWN:
+        if (HWND owner = GetOwnerHwnd())
+        {
+            SetFocus(owner);
+        }
         RestartCursorHideTimer();
+        break;
+    case WM_KEYDOWN:
+        if (m_parentHwnd && IsWindow(m_parentHwnd))
+        {
+            SendMessageW(m_parentHwnd, WM_KEYDOWN, wParam, lParam);
+            return 0;
+        }
         break;
     case WM_CONTEXTMENU:
         if (m_parentHwnd && IsWindow(m_parentHwnd))

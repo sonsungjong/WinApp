@@ -2,12 +2,14 @@
 #include "Views/FileDialogs.h"
 #include "Views/FontHelper.h"
 #include <dwmapi.h>
+#include <imm.h>
 #include <shobjidl.h>
 #include <algorithm>
 #include <cwctype>
 #include <filesystem>
 
 #pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "imm32.lib")
 #pragma comment(lib, "shell32.lib")
 
 namespace
@@ -1314,15 +1316,32 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
             InvalidateRect(hwnd, nullptr, FALSE);
             return 0;
         }
-        if (wParam == VK_DELETE && !m_searchFocused)
+        if (!m_searchFocused)
         {
-            if (m_onRemove && !m_selectedIndices.empty()) m_onRemove(m_selectedIndices);
-            return 0;
-        }
-        if (wParam == VK_RETURN && !m_searchFocused)
-        {
-            if (m_onPlay) m_onPlay(m_selectedIndices);
-            return 0;
+            if (wParam == VK_PROCESSKEY)
+            {
+                wParam = ImmGetVirtualKey(hwnd);
+            }
+            if (wParam == VK_DELETE)
+            {
+                if (m_onRemove && !m_selectedIndices.empty()) m_onRemove(m_selectedIndices);
+                return 0;
+            }
+            if (wParam == VK_RETURN)
+            {
+                if (m_onPlay) m_onPlay(m_selectedIndices);
+                return 0;
+            }
+            if (wParam == VK_SPACE || wParam == VK_LEFT || wParam == VK_RIGHT ||
+                wParam == VK_UP || wParam == VK_DOWN ||
+                wParam == VK_OEM_4 || wParam == VK_OEM_6 || wParam == VK_OEM_5)
+            {
+                if (m_owner && IsWindow(m_owner))
+                {
+                    SendMessageW(m_owner, WM_KEYDOWN, wParam, lParam);
+                    return 0;
+                }
+            }
         }
         break;
     }

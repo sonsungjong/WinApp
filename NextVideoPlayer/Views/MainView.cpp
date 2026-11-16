@@ -1,8 +1,10 @@
 #include "Views/MainView.h"
 #include "Resource.h"
 #include <dwmapi.h>
+#include <imm.h>
 
 #pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "imm32.lib")
 
 namespace
 {
@@ -57,6 +59,8 @@ bool MainView::Initialize(HINSTANCE hInstance)
     {
         return false;
     }
+
+    ImmAssociateContext(m_hWnd, nullptr);
 
     m_hMenu = GetMenu(m_hWnd);
     SetMenu(m_hWnd, nullptr);
@@ -374,6 +378,10 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_KEYDOWN:
+        if (wParam == VK_PROCESSKEY)
+        {
+            wParam = ImmGetVirtualKey(m_hWnd);
+        }
         if (wParam == VK_RETURN)
         {
             ToggleFullscreen();
@@ -396,6 +404,10 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_ACTIVATE:
+        if (LOWORD(wParam) != WA_INACTIVE)
+        {
+            SetFocus(m_hWnd);
+        }
         if (m_onActivationChanged) m_onActivationChanged(LOWORD(wParam) != WA_INACTIVE);
         break;
 

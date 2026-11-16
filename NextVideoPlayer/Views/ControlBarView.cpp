@@ -1,5 +1,6 @@
 #include "Views/ControlBarView.h"
 #include "Views/FontHelper.h"
+#include <imm.h>
 #include <algorithm>
 #include <cmath>
 #include <cwchar>
@@ -45,6 +46,7 @@ bool ControlBarView::Initialize(HINSTANCE hInstance, HWND parentHwnd, int x, int
         return false;
     }
 
+    ImmAssociateContext(m_hWnd, nullptr);
     m_isVisible = true;
     SetWindowPos(m_hWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     return true;
@@ -722,7 +724,11 @@ LRESULT ControlBarView::HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LP
 
 void ControlBarView::OnLButtonDown(float x, float y)
 {
-    if (m_parentHwnd)
+    if (HWND rootHwnd = GetAncestor(m_hWnd, GA_ROOT))
+    {
+        SetFocus(rootHwnd);
+    }
+    else if (m_parentHwnd)
     {
         SetFocus(m_parentHwnd);
     }

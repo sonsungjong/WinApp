@@ -1,0 +1,121 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Models">
+      <UniqueIdentifier>{CE1FB4CE-399E-453C-9A05-C8D767B97F30}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Views">
+      <UniqueIdentifier>{8CB1F5D3-AE4F-4527-B2B1-889A6A522523}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Presenters">
+      <UniqueIdentifier>{7A491A3B-5C38-4123-A879-C27564A4C6ED}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="소스 파일">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="헤더 파일">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="리소스 파일">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="CppMcpApp.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Models\MainModel.h">
+      <Filter>Models</Filter>
+    </ClInclude>
+    <ClInclude Include="Models\HomeModel.h">
+      <Filter>Models</Filter>
+    </ClInclude>
+    <ClInclude Include="Models\SettingModel.h">
+      <Filter>Models</Filter>
+    </ClInclude>
+    <ClInclude Include="Presenters\SettingPresenter.h">
+      <Filter>Presenters</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\ISettingView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\SettingView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Presenters\HomePresenter.h">
+      <Filter>Presenters</Filter>
+    </ClInclude>
+    <ClInclude Include="Presenters\MainPresenter.h">
+      <Filter>Presenters</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\IMainView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\IHomeView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\HomeView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="Views\MainView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="CppMcpApp.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Models\MainModel.cpp">
+      <Filter>Models</Filter>
+    </ClCompile>
+    <ClCompile Include="Models\HomeModel.cpp">
+      <Filter>Models</Filter>
+    </ClCompile>
+    <ClCompile Include="Models\SettingModel.cpp">
+      <Filter>Models</Filter>
+    </ClCompile>
+    <ClCompile Include="Presenters\SettingPresenter.cpp">
+      <Filter>Presenters</Filter>
+    </ClCompile>
+    <ClCompile Include="Views\SettingView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="Presenters\HomePresenter.cpp">
+      <Filter>Presenters</Filter>
+    </ClCompile>
+    <ClCompile Include="Presenters\MainPresenter.cpp">
+      <Filter>Presenters</Filter>
+    </ClCompile>
+    <ClCompile Include="Views\MainView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="Views\HomeView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="CppMcpApp.rc">
+      <Filter>리소스 파일</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="small.ico">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="CppMcpApp.ico">
+      <Filter>리소스 파일</Filter>
+    </Image>
+  </ItemGroup>
+</Project>

@@ -39,6 +39,7 @@ bool VideoModel::Initialize(HWND videoHwnd)
     // Losing an audio device must not interrupt unattended video playback.
     mpv_set_option_string(m_mpv, "audio-fallback-to-null", "yes");
     mpv_set_option_string(m_mpv, "keep-open", "no");
+    mpv_set_option_string(m_mpv, "force-window", "yes");
     mpv_set_option_string(m_mpv, "loop-file", "no");
     mpv_set_option_string(m_mpv, "sub-auto", "fuzzy");
     mpv_set_option_string(m_mpv, "sub-codepage", "auto");

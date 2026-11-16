@@ -1,4 +1,3 @@
-#requires -Version 7.0
 [CmdletBinding()]
 param([ValidateSet('Debug','Release')][string]$Configuration='Release',
       [ValidateSet('x64','Win32')][string]$Platform='x64')
@@ -50,7 +49,7 @@ $options=@(
 if ($LASTEXITCODE) { throw 'libwebsockets configure failed.' }
 & $cmakePath --build $build --config $Configuration --target install --parallel 4
 if ($LASTEXITCODE) { throw 'libwebsockets build failed.' }
-$library=Get-ChildItem -LiteralPath "$install\lib" -Filter '*websockets*.lib' -File | Select-Object -First 1
+$library=Get-ChildItem -LiteralPath "$install\lib" -Filter '*websockets*.lib' -File | Where-Object Name -ne 'nvp-websockets.lib' | Select-Object -First 1
 if (-not $library) { throw 'libwebsockets static library was not generated.' }
 Copy-Item -LiteralPath $library.FullName -Destination "$install\lib\nvp-websockets.lib" -Force
 [IO.File]::WriteAllText($stamp,$fingerprint,[Text.UTF8Encoding]::new($false))

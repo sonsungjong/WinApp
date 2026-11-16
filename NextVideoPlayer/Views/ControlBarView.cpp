@@ -1,17 +1,30 @@
 #include "Views/ControlBarView.h"
 #include "Views/FontHelper.h"
+#include "Models/PlaybackSpeed.h"
+#include <dwmapi.h>
 #include <imm.h>
 #include <algorithm>
 #include <cmath>
 #include <cwchar>
 
+#pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "imm32.lib")
+
 namespace
 {
     constexpr wchar_t kControlBarClassName[] = L"NextVideoPlayer_ControlBarWnd";
+    constexpr wchar_t kSpeedPopupClassName[] = L"NextVideoPlayer_SpeedPopupWnd";
+    constexpr int kSpeedPopupWidth = 112;
+    constexpr int kSpeedRowHeight = 28;
+    constexpr int kSpeedPopupPadY = 6;
+    constexpr int kSpeedPopupGap = 6;
+    constexpr int kSpeedPopupHeight =
+        static_cast<int>(PlaybackSpeed::kPresets.size()) * kSpeedRowHeight + kSpeedPopupPadY * 2;
 }
 
 ControlBarView::~ControlBarView()
 {
+    if (m_speedPopupHwnd && IsWindow(m_speedPopupHwnd)) DestroyWindow(m_speedPopupHwnd);
     if (m_hWnd && IsWindow(m_hWnd)) DestroyWindow(m_hWnd);
 }
 
@@ -60,6 +73,10 @@ HWND ControlBarView::GetHwnd() const
 void ControlBarView::SetBounds(int x, int y, int width, int height, bool visible)
 {
     m_isVisible = visible;
+    if (!visible)
+    {
+        CloseSpeedPopup(false);
+    }
     if (!m_hWnd)
     {
         return;
@@ -83,6 +100,10 @@ void ControlBarView::SetVisible(bool visible)
     }
 
     m_isVisible = visible;
+    if (!visible)
+    {
+        CloseSpeedPopup(false);
+    }
     if (!m_hWnd)
     {
         return;
@@ -117,7 +138,7 @@ bool ControlBarView::IsVisible() const
 
 bool ControlBarView::IsDragging() const
 {
-    return m_isDraggingSeek || m_isDraggingVolume;
+    return m_isDraggingSeek || m_isDraggingVolume || IsSpeedPopupOpen();
 }
 
 void ControlBarView::Render(const ControlBarState& state)
@@ -126,6 +147,10 @@ void ControlBarView::Render(const ControlBarState& state)
     if (m_isVisible && m_hWnd && IsWindow(m_hWnd))
     {
         InvalidateRect(m_hWnd, nullptr, FALSE);
+    }
+    if (IsSpeedPopupOpen())
+    {
+        InvalidateRect(m_speedPopupHwnd, nullptr, FALSE);
     }
 }
 
@@ -146,6 +171,7 @@ void ControlBarView::SetOnVolumeChanged(std::function<void(int)> handler) { m_on
 void ControlBarView::SetOnMuteToggled(std::function<void()> handler) { m_onMuteToggled = std::move(handler); }
 void ControlBarView::SetOnSpeedStep(std::function<void(int)> handler) { m_onSpeedStep = std::move(handler); }
 void ControlBarView::SetOnSpeedReset(std::function<void()> handler) { m_onSpeedReset = std::move(handler); }
+void ControlBarView::SetOnSpeedSelected(std::function<void(double)> handler) { m_onSpeedSelected = std::move(handler); }
 void ControlBarView::SetOnRepeatToggled(std::function<void()> handler) { m_onRepeatToggled = std::move(handler); }
 void ControlBarView::SetOnSubtitleToggle(std::function<void()> handler) { m_onSubtitleToggle = std::move(handler); }
 void ControlBarView::SetOnPlaylistRequested(std::function<void()> handler) { m_onPlaylistRequested = std::move(handler); }
@@ -153,6 +179,16 @@ void ControlBarView::SetOnSettingsRequested(std::function<void()> handler) { m_o
 
 ATOM ControlBarView::RegisterWindowClass(HINSTANCE hInstance) const
 {
+    WNDCLASSEXW popupWc{};
+    popupWc.cbSize = sizeof(WNDCLASSEXW);
+    popupWc.style = CS_HREDRAW | CS_VREDRAW;
+    popupWc.lpfnWndProc = ControlBarView::SpeedPopupWndProc;
+    popupWc.hInstance = hInstance;
+    popupWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    popupWc.hbrBackground = nullptr;
+    popupWc.lpszClassName = kSpeedPopupClassName;
+    RegisterClassExW(&popupWc);
+
     WNDCLASSEXW barWc{};
     barWc.cbSize = sizeof(WNDCLASSEXW);
     barWc.style = CS_HREDRAW | CS_VREDRAW;
@@ -710,6 +746,12 @@ LRESULT ControlBarView::HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LP
         }
         return 0;
     case WM_DESTROY:
+        CloseSpeedPopup(false);
+        if (m_speedPopupHwnd && IsWindow(m_speedPopupHwnd))
+        {
+            DestroyWindow(m_speedPopupHwnd);
+            m_speedPopupHwnd = nullptr;
+        }
         CancelDrag();
         DiscardDeviceResources();
         return 0;
@@ -724,6 +766,10 @@ LRESULT ControlBarView::HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LP
 
 void ControlBarView::OnLButtonDown(float x, float y)
 {
+    const bool wasSpeedPopupOpen = IsSpeedPopupOpen();
+    const bool justClosedPopup = (m_speedPopupClosedTick != 0 && GetTickCount64() - m_speedPopupClosedTick < 150);
+    CloseSpeedPopup(false);
+
     if (HWND rootHwnd = GetAncestor(m_hWnd, GA_ROOT))
     {
         SetFocus(rootHwnd);
@@ -755,7 +801,13 @@ void ControlBarView::OnLButtonDown(float x, float y)
     else if (PtInRectF(m_btnNext, x, y) && m_onNextRequested) m_onNextRequested();
     else if (PtInRectF(m_btnMute, x, y) && m_onMuteToggled) m_onMuteToggled();
     else if (PtInRectF(m_btnSpeedMinus, x, y) && m_onSpeedStep) m_onSpeedStep(-1);
-    else if (PtInRectF(m_btnSpeedReset, x, y) && m_onSpeedReset) m_onSpeedReset();
+    else if (PtInRectF(m_btnSpeedReset, x, y))
+    {
+        if (!wasSpeedPopupOpen && !justClosedPopup)
+        {
+            ShowSpeedPopup();
+        }
+    }
     else if (PtInRectF(m_btnSpeedPlus, x, y) && m_onSpeedStep) m_onSpeedStep(1);
     else if (PtInRectF(m_btnRepeat, x, y) && m_onRepeatToggled) m_onRepeatToggled();
     else if (PtInRectF(m_btnSub, x, y) && m_onSubtitleToggle) m_onSubtitleToggle();
@@ -837,4 +889,310 @@ void ControlBarView::VolumeFromMouseX(float x)
     float ratio = std::clamp((x - m_volSliderRect.left) / width, 0.0f, 1.0f);
     int volume = static_cast<int>(std::round(ratio * 100.0f));
     m_onVolumeChanged(volume);
+}
+
+bool ControlBarView::IsSpeedPopupOpen() const
+{
+    return m_speedPopupHwnd && IsWindow(m_speedPopupHwnd) && IsWindowVisible(m_speedPopupHwnd);
+}
+
+void ControlBarView::ShowSpeedPopup()
+{
+    if (!m_hWnd || !IsWindow(m_hWnd))
+    {
+        return;
+    }
+
+    HWND ownerHwnd = GetAncestor(m_hWnd, GA_ROOT);
+    if (!ownerHwnd)
+    {
+        ownerHwnd = m_parentHwnd ? m_parentHwnd : m_hWnd;
+    }
+
+    if (!m_speedPopupHwnd || !IsWindow(m_speedPopupHwnd))
+    {
+        m_speedPopupHwnd = CreateWindowExW(
+            WS_EX_TOOLWINDOW,
+            kSpeedPopupClassName,
+            nullptr,
+            WS_POPUP | WS_CLIPSIBLINGS,
+            0, 0, kSpeedPopupWidth, kSpeedPopupHeight,
+            ownerHwnd,
+            nullptr,
+            m_hInstance,
+            this);
+        if (!m_speedPopupHwnd)
+        {
+            return;
+        }
+
+        ImmAssociateContext(m_speedPopupHwnd, nullptr);
+        DWORD cornerPref = 2; // DWMWCP_ROUND
+        DwmSetWindowAttribute(m_speedPopupHwnd, 33, &cornerPref, sizeof(cornerPref));
+    }
+
+    POINT ptBtn{
+        static_cast<LONG>(std::lround((m_btnSpeedReset.left + m_btnSpeedReset.right) * 0.5f)),
+        static_cast<LONG>(std::lround(m_btnSpeedReset.top))
+    };
+    ClientToScreen(m_hWnd, &ptBtn);
+
+    int popupX = ptBtn.x - kSpeedPopupWidth / 2;
+    int popupY = ptBtn.y - kSpeedPopupHeight - kSpeedPopupGap;
+
+    HMONITOR hMonitor = MonitorFromWindow(ownerHwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{ sizeof(MONITORINFO) };
+    if (GetMonitorInfoW(hMonitor, &mi))
+    {
+        popupX = std::clamp(popupX, static_cast<int>(mi.rcMonitor.left),
+            static_cast<int>(mi.rcMonitor.right) - kSpeedPopupWidth);
+        if (popupY < mi.rcMonitor.top)
+        {
+            const int btnHeight = static_cast<int>(std::lround(m_btnSpeedReset.bottom - m_btnSpeedReset.top));
+            popupY = ptBtn.y + btnHeight + kSpeedPopupGap;
+        }
+        popupY = std::clamp(popupY, static_cast<int>(mi.rcMonitor.top),
+            static_cast<int>(mi.rcMonitor.bottom) - kSpeedPopupHeight);
+    }
+
+    m_hoveredSpeedIndex = -1;
+    m_isTrackingPopupMouse = false;
+
+    const bool ownerTopMost = (GetWindowLongPtrW(ownerHwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    SetWindowPos(
+        m_speedPopupHwnd,
+        ownerTopMost ? HWND_TOPMOST : HWND_TOP,
+        popupX,
+        popupY,
+        kSpeedPopupWidth,
+        kSpeedPopupHeight,
+        SWP_SHOWWINDOW);
+    SetFocus(m_speedPopupHwnd);
+    InvalidateRect(m_speedPopupHwnd, nullptr, FALSE);
+}
+
+void ControlBarView::CloseSpeedPopup(bool restoreFocus)
+{
+    if (m_isClosingSpeedPopup || !IsSpeedPopupOpen())
+    {
+        return;
+    }
+
+    m_isClosingSpeedPopup = true;
+    m_speedPopupClosedTick = GetTickCount64();
+    m_hoveredSpeedIndex = -1;
+    m_isTrackingPopupMouse = false;
+    ShowWindow(m_speedPopupHwnd, SW_HIDE);
+
+    if (restoreFocus && m_hWnd && IsWindow(m_hWnd))
+    {
+        if (HWND rootHwnd = GetAncestor(m_hWnd, GA_ROOT))
+        {
+            SetFocus(rootHwnd);
+        }
+        else if (m_parentHwnd)
+        {
+            SetFocus(m_parentHwnd);
+        }
+    }
+    m_isClosingSpeedPopup = false;
+}
+
+void ControlBarView::DrawSpeedPopup(HDC hdc)
+{
+    if (!m_speedPopupHwnd || !IsWindow(m_speedPopupHwnd) || !hdc)
+    {
+        return;
+    }
+
+    if (FAILED(CreateDeviceResources()))
+    {
+        return;
+    }
+
+    RECT rc{};
+    GetClientRect(m_speedPopupHwnd, &rc);
+    if (rc.right <= rc.left || rc.bottom <= rc.top)
+    {
+        return;
+    }
+
+    if (FAILED(m_renderTarget->BindDC(hdc, &rc)))
+    {
+        DiscardDeviceResources();
+        return;
+    }
+
+    m_renderTarget->BeginDraw();
+
+    const D2D1_SIZE_F rtSize = m_renderTarget->GetSize();
+    m_renderTarget->Clear(D2D1::ColorF(0x1B1E28, 1.0f));
+    m_renderTarget->DrawRoundedRectangle(
+        D2D1::RoundedRect(D2D1::RectF(0.5f, 0.5f, rtSize.width - 0.5f, rtSize.height - 0.5f), 8.0f, 8.0f),
+        m_btnBorderBrush.Get(),
+        1.0f);
+
+    for (int i = 0; i < static_cast<int>(PlaybackSpeed::kPresets.size()); ++i)
+    {
+        const double preset = PlaybackSpeed::kPresets[i];
+        const bool selected = std::abs(m_state.speed - preset) < 0.015;
+        const bool hovered = (i == m_hoveredSpeedIndex);
+
+        const float top = static_cast<float>(kSpeedPopupPadY + i * kSpeedRowHeight + 1);
+        const float bottom = static_cast<float>(kSpeedPopupPadY + (i + 1) * kSpeedRowHeight - 1);
+        D2D1_RECT_F itemRect = D2D1::RectF(6.0f, top, rtSize.width - 6.0f, bottom);
+        D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(itemRect, 5.0f, 5.0f);
+
+        if (selected)
+        {
+            m_renderTarget->FillRoundedRectangle(rounded, hovered ? m_accentHoverBrush.Get() : m_accentBrush.Get());
+        }
+        else if (hovered)
+        {
+            m_renderTarget->FillRoundedRectangle(rounded, m_btnHoverBrush.Get());
+            m_renderTarget->DrawRoundedRectangle(rounded, m_btnBorderBrush.Get(), 1.0f);
+        }
+
+        WCHAR buf[32]{};
+        swprintf_s(buf, L"%.2fx", preset);
+        m_renderTarget->DrawTextW(
+            buf,
+            static_cast<UINT32>(wcslen(buf)),
+            m_speedTextFormat.Get(),
+            itemRect,
+            (selected || hovered) ? m_barTextBrush.Get() : m_barSubTextBrush.Get());
+    }
+
+    if (m_renderTarget->EndDraw() == D2DERR_RECREATE_TARGET)
+    {
+        DiscardDeviceResources();
+    }
+}
+
+LRESULT CALLBACK ControlBarView::SpeedPopupWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    ControlBarView* view = nullptr;
+
+    if (message == WM_NCCREATE)
+    {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        view = static_cast<ControlBarView*>(cs->lpCreateParams);
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(view));
+        view->m_speedPopupHwnd = hWnd;
+    }
+    else
+    {
+        view = reinterpret_cast<ControlBarView*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+    }
+
+    if (view)
+    {
+        return view->HandleSpeedPopupMessage(hWnd, message, wParam, lParam);
+    }
+
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
+LRESULT ControlBarView::HandleSpeedPopupMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    auto hitTestRow = [](int x, int y) -> int {
+        if (x < 6 || x > kSpeedPopupWidth - 6 || y < kSpeedPopupPadY)
+        {
+            return -1;
+        }
+        const int idx = (y - kSpeedPopupPadY) / kSpeedRowHeight;
+        if (idx < 0 || idx >= static_cast<int>(PlaybackSpeed::kPresets.size()))
+        {
+            return -1;
+        }
+        return idx;
+    };
+
+    switch (message)
+    {
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps{};
+        HDC hdc = BeginPaint(hWnd, &ps);
+        DrawSpeedPopup(hdc);
+        EndPaint(hWnd, &ps);
+        return 0;
+    }
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_MOUSEMOVE:
+    {
+        if (!m_isTrackingPopupMouse)
+        {
+            TRACKMOUSEEVENT tme{ sizeof(TRACKMOUSEEVENT), TME_LEAVE, hWnd, 0 };
+            m_isTrackingPopupMouse = TrackMouseEvent(&tme) != FALSE;
+        }
+        const int idx = hitTestRow(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        if (idx != m_hoveredSpeedIndex)
+        {
+            m_hoveredSpeedIndex = idx;
+            InvalidateRect(hWnd, nullptr, FALSE);
+        }
+        return 0;
+    }
+    case WM_MOUSELEAVE:
+        m_isTrackingPopupMouse = false;
+        if (m_hoveredSpeedIndex != -1)
+        {
+            m_hoveredSpeedIndex = -1;
+            InvalidateRect(hWnd, nullptr, FALSE);
+        }
+        return 0;
+    case WM_LBUTTONDOWN:
+    {
+        const int idx = hitTestRow(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        if (idx >= 0)
+        {
+            const double preset = PlaybackSpeed::kPresets[idx];
+            CloseSpeedPopup(true);
+            if (m_onSpeedSelected)
+            {
+                m_onSpeedSelected(preset);
+            }
+        }
+        return 0;
+    }
+    case WM_KEYDOWN:
+    {
+        if (wParam == VK_PROCESSKEY)
+        {
+            wParam = ImmGetVirtualKey(hWnd);
+        }
+        if (wParam == VK_ESCAPE)
+        {
+            CloseSpeedPopup(true);
+            return 0;
+        }
+        HWND rootHwnd = m_hWnd ? GetAncestor(m_hWnd, GA_ROOT) : nullptr;
+        CloseSpeedPopup(true);
+        if (rootHwnd && IsWindow(rootHwnd))
+        {
+            SendMessageW(rootHwnd, WM_KEYDOWN, wParam, lParam);
+        }
+        return 0;
+    }
+    case WM_ACTIVATE:
+        if (LOWORD(wParam) == WA_INACTIVE)
+        {
+            CloseSpeedPopup(false);
+        }
+        return 0;
+    case WM_KILLFOCUS:
+        CloseSpeedPopup(false);
+        return 0;
+    case WM_NCDESTROY:
+        if (m_speedPopupHwnd == hWnd)
+        {
+            m_speedPopupHwnd = nullptr;
+        }
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, 0);
+        break;
+    }
+
+    return DefWindowProcW(hWnd, message, wParam, lParam);
 }

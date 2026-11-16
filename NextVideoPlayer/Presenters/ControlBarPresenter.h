@@ -18,6 +18,7 @@ public:
     void ToggleMute();
     void StepSpeed(int direction);
     void ResetSpeed();
+    void SetSpeed(double speed);
     void ToggleRepeat();
     void SetABLoop(int action);
     void ToggleSubtitle();

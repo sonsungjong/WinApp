@@ -28,6 +28,7 @@ public:
     virtual void SetOnMuteToggled(std::function<void()> handler) = 0;
     virtual void SetOnSpeedStep(std::function<void(int)> handler) = 0;
     virtual void SetOnSpeedReset(std::function<void()> handler) = 0;
+    virtual void SetOnSpeedSelected(std::function<void(double)> handler) = 0;
     virtual void SetOnRepeatToggled(std::function<void()> handler) = 0;
     virtual void SetOnSubtitleToggle(std::function<void()> handler) = 0;
     virtual void SetOnPlaylistRequested(std::function<void()> handler) = 0;

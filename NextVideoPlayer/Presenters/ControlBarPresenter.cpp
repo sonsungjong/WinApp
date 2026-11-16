@@ -15,6 +15,7 @@ ControlBarPresenter::~ControlBarPresenter()
     m_view.SetOnMuteToggled({});
     m_view.SetOnSpeedStep({});
     m_view.SetOnSpeedReset({});
+    m_view.SetOnSpeedSelected({});
     m_view.SetOnRepeatToggled({});
     m_view.SetOnSubtitleToggle({});
     m_view.SetOnPlaylistRequested({});
@@ -32,6 +33,7 @@ void ControlBarPresenter::Initialize()
     m_view.SetOnMuteToggled([this]() { ToggleMute(); });
     m_view.SetOnSpeedStep([this](int direction) { StepSpeed(direction); });
     m_view.SetOnSpeedReset([this]() { ResetSpeed(); });
+    m_view.SetOnSpeedSelected([this](double speed) { SetSpeed(speed); });
     m_view.SetOnRepeatToggled([this]() { ToggleRepeat(); });
     m_view.SetOnSubtitleToggle([this]() { ToggleSubtitle(); });
     m_view.SetOnPlaylistRequested([this]() { if (m_onPlaylist) m_onPlaylist(); });
@@ -82,6 +84,7 @@ void ControlBarPresenter::StepVolume(int delta) { SetVolume(m_video.GetVolume() 
 void ControlBarPresenter::ToggleMute() { m_video.SetMuted(!m_video.IsMuted()); Notify(true); }
 void ControlBarPresenter::StepSpeed(int direction) { m_video.SetSpeed(PlaybackSpeed::Step(m_video.GetSpeed(), direction)); Notify(true); }
 void ControlBarPresenter::ResetSpeed() { m_video.SetSpeed(1.0); Notify(true); }
+void ControlBarPresenter::SetSpeed(double speed) { m_video.SetSpeed(speed); Notify(true); }
 void ControlBarPresenter::ToggleRepeat() { m_video.SetRepeat(!m_video.IsRepeatEnabled()); Notify(true); }
 void ControlBarPresenter::ToggleSubtitle() { m_video.SetSubtitleVisible(!m_video.IsSubtitleVisible()); Notify(true); }
 void ControlBarPresenter::StepSubtitleDelay(double delta) { m_video.AdjustSubtitleDelay(delta); Notify(); }

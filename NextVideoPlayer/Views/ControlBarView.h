@@ -30,6 +30,7 @@ public:
     void SetOnMuteToggled(std::function<void()> handler) override;
     void SetOnSpeedStep(std::function<void(int)> handler) override;
     void SetOnSpeedReset(std::function<void()> handler) override;
+    void SetOnSpeedSelected(std::function<void(double)> handler) override;
     void SetOnRepeatToggled(std::function<void()> handler) override;
     void SetOnSubtitleToggle(std::function<void()> handler) override;
     void SetOnPlaylistRequested(std::function<void()> handler) override;
@@ -37,7 +38,9 @@ public:
 
 private:
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK SpeedPopupWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    LRESULT HandleSpeedPopupMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
     ATOM RegisterWindowClass(HINSTANCE hInstance) const;
     HRESULT CreateDeviceIndependentResources();
@@ -45,6 +48,10 @@ private:
     void DiscardDeviceResources();
 
     void Draw(HDC hdc);
+    void DrawSpeedPopup(HDC hdc);
+    void ShowSpeedPopup();
+    void CloseSpeedPopup(bool restoreFocus = true);
+    bool IsSpeedPopupOpen() const;
     void DrawButton(const D2D1_RECT_F& rect, const std::wstring& label, IDWriteTextFormat* textFormat, bool active = false);
     static std::wstring FormatTime(double seconds);
     static bool PtInRectF(const D2D1_RECT_F& rect, float x, float y);
@@ -60,12 +67,17 @@ private:
     HINSTANCE m_hInstance = nullptr;
     HWND m_parentHwnd = nullptr;
     HWND m_hWnd = nullptr;
+    HWND m_speedPopupHwnd = nullptr;
     bool m_isVisible = true;
 
     ControlBarState m_state{};
     bool m_isDraggingSeek = false;
     bool m_isDraggingVolume = false;
     bool m_isTrackingMouse = false;
+    bool m_isTrackingPopupMouse = false;
+    bool m_isClosingSpeedPopup = false;
+    int m_hoveredSpeedIndex = -1;
+    ULONGLONG m_speedPopupClosedTick = 0;
     D2D1_POINT_2F m_hoverMousePt{ -1.0f, -1.0f };
 
     D2D1_RECT_F m_seekBarRect{};
@@ -114,6 +126,7 @@ private:
     std::function<void()> m_onMuteToggled;
     std::function<void(int)> m_onSpeedStep;
     std::function<void()> m_onSpeedReset;
+    std::function<void(double)> m_onSpeedSelected;
     std::function<void()> m_onRepeatToggled;
     std::function<void()> m_onSubtitleToggle;
     std::function<void()> m_onPlaylistRequested;

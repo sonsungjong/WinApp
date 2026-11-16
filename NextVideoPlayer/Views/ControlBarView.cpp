@@ -14,16 +14,21 @@ namespace
 {
     constexpr wchar_t kControlBarClassName[] = L"NextVideoPlayer_ControlBarWnd";
     constexpr wchar_t kSpeedPopupClassName[] = L"NextVideoPlayer_SpeedPopupWnd";
+    constexpr wchar_t kSeekTooltipClassName[] = L"NextVideoPlayer_SeekTooltipWnd";
     constexpr int kSpeedPopupWidth = 112;
     constexpr int kSpeedRowHeight = 28;
     constexpr int kSpeedPopupPadY = 6;
     constexpr int kSpeedPopupGap = 6;
     constexpr int kSpeedPopupHeight =
         static_cast<int>(PlaybackSpeed::kPresets.size()) * kSpeedRowHeight + kSpeedPopupPadY * 2;
+    constexpr int kSeekTooltipWidth = 78;
+    constexpr int kSeekTooltipHeight = 28;
+    constexpr int kSeekTooltipGap = 6;
 }
 
 ControlBarView::~ControlBarView()
 {
+    if (m_seekTooltipHwnd && IsWindow(m_seekTooltipHwnd)) DestroyWindow(m_seekTooltipHwnd);
     if (m_speedPopupHwnd && IsWindow(m_speedPopupHwnd)) DestroyWindow(m_speedPopupHwnd);
     if (m_hWnd && IsWindow(m_hWnd)) DestroyWindow(m_hWnd);
 }
@@ -76,6 +81,7 @@ void ControlBarView::SetBounds(int x, int y, int width, int height, bool visible
     if (!visible)
     {
         CloseSpeedPopup(false);
+        HideSeekTooltip();
     }
     if (!m_hWnd)
     {
@@ -103,6 +109,7 @@ void ControlBarView::SetVisible(bool visible)
     if (!visible)
     {
         CloseSpeedPopup(false);
+        HideSeekTooltip();
     }
     if (!m_hWnd)
     {
@@ -144,6 +151,10 @@ bool ControlBarView::IsDragging() const
 void ControlBarView::Render(const ControlBarState& state)
 {
     m_state = state;
+    if (state.duration <= 0.0)
+    {
+        HideSeekTooltip();
+    }
     if (m_isVisible && m_hWnd && IsWindow(m_hWnd))
     {
         InvalidateRect(m_hWnd, nullptr, FALSE);
@@ -188,6 +199,16 @@ ATOM ControlBarView::RegisterWindowClass(HINSTANCE hInstance) const
     popupWc.hbrBackground = nullptr;
     popupWc.lpszClassName = kSpeedPopupClassName;
     RegisterClassExW(&popupWc);
+
+    WNDCLASSEXW tooltipWc{};
+    tooltipWc.cbSize = sizeof(WNDCLASSEXW);
+    tooltipWc.style = CS_HREDRAW | CS_VREDRAW;
+    tooltipWc.lpfnWndProc = ControlBarView::SeekTooltipWndProc;
+    tooltipWc.hInstance = hInstance;
+    tooltipWc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    tooltipWc.hbrBackground = nullptr;
+    tooltipWc.lpszClassName = kSeekTooltipClassName;
+    RegisterClassExW(&tooltipWc);
 
     WNDCLASSEXW barWc{};
     barWc.cbSize = sizeof(WNDCLASSEXW);
@@ -746,6 +767,12 @@ LRESULT ControlBarView::HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LP
         }
         return 0;
     case WM_DESTROY:
+        HideSeekTooltip();
+        if (m_seekTooltipHwnd && IsWindow(m_seekTooltipHwnd))
+        {
+            DestroyWindow(m_seekTooltipHwnd);
+            m_seekTooltipHwnd = nullptr;
+        }
         CloseSpeedPopup(false);
         if (m_speedPopupHwnd && IsWindow(m_speedPopupHwnd))
         {
@@ -784,6 +811,7 @@ void ControlBarView::OnLButtonDown(float x, float y)
         m_isDraggingSeek = true;
         SetCapture(m_hWnd);
         SeekFromMouseX(x);
+        UpdateSeekTooltip(x);
         return;
     }
 
@@ -837,6 +865,15 @@ void ControlBarView::OnMouseMove(float x, float y)
         VolumeFromMouseX(x);
     }
 
+    if (m_isDraggingSeek || PtInRectF(m_seekBarRect, x, y))
+    {
+        UpdateSeekTooltip(x);
+    }
+    else
+    {
+        HideSeekTooltip();
+    }
+
     if (m_hWnd)
     {
         InvalidateRect(m_hWnd, nullptr, FALSE);
@@ -847,6 +884,10 @@ void ControlBarView::OnMouseLeave()
 {
     m_isTrackingMouse = false;
     m_hoverMousePt = D2D1::Point2F(-1.0f, -1.0f);
+    if (!m_isDraggingSeek)
+    {
+        HideSeekTooltip();
+    }
     if (m_hWnd)
     {
         InvalidateRect(m_hWnd, nullptr, FALSE);
@@ -863,7 +904,19 @@ void ControlBarView::CancelDrag()
     m_isDraggingSeek = false;
     m_isDraggingVolume = false;
     if (m_hWnd && GetCapture() == m_hWnd) ReleaseCapture();
+    POINT cursorPt{};
+    if (!m_hWnd || !GetCursorPos(&cursorPt) || !ScreenToClient(m_hWnd, &cursorPt) ||
+        !PtInRectF(m_seekBarRect, static_cast<float>(cursorPt.x), static_cast<float>(cursorPt.y)))
+    {
+        HideSeekTooltip();
+    }
     Invalidate();
+}
+
+double ControlBarView::SeekRatioFromMouseX(float x) const
+{
+    float width = std::max(1.0f, m_seekBarRect.right - m_seekBarRect.left);
+    return std::clamp(static_cast<double>((x - m_seekBarRect.left) / width), 0.0, 1.0);
 }
 
 void ControlBarView::SeekFromMouseX(float x)
@@ -873,9 +926,7 @@ void ControlBarView::SeekFromMouseX(float x)
         return;
     }
 
-    float width = std::max(1.0f, m_seekBarRect.right - m_seekBarRect.left);
-    float ratio = std::clamp((x - m_seekBarRect.left) / width, 0.0f, 1.0f);
-    m_onSeekAbsolute(static_cast<double>(ratio) * m_state.duration);
+    m_onSeekAbsolute(SeekRatioFromMouseX(x) * m_state.duration);
 }
 
 void ControlBarView::VolumeFromMouseX(float x)
@@ -903,11 +954,7 @@ void ControlBarView::ShowSpeedPopup()
         return;
     }
 
-    HWND ownerHwnd = GetAncestor(m_hWnd, GA_ROOT);
-    if (!ownerHwnd)
-    {
-        ownerHwnd = m_parentHwnd ? m_parentHwnd : m_hWnd;
-    }
+    HWND ownerHwnd = GetRootOwnerHwnd();
 
     if (!m_speedPopupHwnd || !IsWindow(m_speedPopupHwnd))
     {
@@ -984,15 +1031,11 @@ void ControlBarView::CloseSpeedPopup(bool restoreFocus)
     m_isTrackingPopupMouse = false;
     ShowWindow(m_speedPopupHwnd, SW_HIDE);
 
-    if (restoreFocus && m_hWnd && IsWindow(m_hWnd))
+    if (restoreFocus)
     {
-        if (HWND rootHwnd = GetAncestor(m_hWnd, GA_ROOT))
+        if (HWND rootHwnd = GetRootOwnerHwnd(); rootHwnd && IsWindow(rootHwnd))
         {
             SetFocus(rootHwnd);
-        }
-        else if (m_parentHwnd)
-        {
-            SetFocus(m_parentHwnd);
         }
     }
     m_isClosingSpeedPopup = false;
@@ -1189,6 +1232,210 @@ LRESULT ControlBarView::HandleSpeedPopupMessage(HWND hWnd, UINT message, WPARAM 
         if (m_speedPopupHwnd == hWnd)
         {
             m_speedPopupHwnd = nullptr;
+        }
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, 0);
+        break;
+    }
+
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
+HWND ControlBarView::GetRootOwnerHwnd() const
+{
+    if (m_hWnd && IsWindow(m_hWnd))
+    {
+        if (HWND rootHwnd = GetAncestor(m_hWnd, GA_ROOT))
+        {
+            return rootHwnd;
+        }
+    }
+    return m_parentHwnd ? m_parentHwnd : m_hWnd;
+}
+
+void ControlBarView::UpdateSeekTooltip(float mouseX)
+{
+    if (!m_isVisible || !m_hWnd || !IsWindow(m_hWnd) ||
+        m_state.duration <= 0.0 || m_seekBarRect.right <= m_seekBarRect.left)
+    {
+        HideSeekTooltip();
+        return;
+    }
+
+    HWND ownerHwnd = GetRootOwnerHwnd();
+    if (!m_seekTooltipHwnd || !IsWindow(m_seekTooltipHwnd))
+    {
+        m_seekTooltipHwnd = CreateWindowExW(
+            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
+            kSeekTooltipClassName,
+            nullptr,
+            WS_POPUP | WS_CLIPSIBLINGS,
+            0, 0, kSeekTooltipWidth, kSeekTooltipHeight,
+            ownerHwnd,
+            nullptr,
+            m_hInstance,
+            this);
+        if (!m_seekTooltipHwnd)
+        {
+            return;
+        }
+
+        ImmAssociateContext(m_seekTooltipHwnd, nullptr);
+        DWORD cornerPref = 2; // DWMWCP_ROUND
+        DwmSetWindowAttribute(m_seekTooltipHwnd, 33, &cornerPref, sizeof(cornerPref));
+    }
+
+    const float clampedX = std::clamp(mouseX, m_seekBarRect.left, m_seekBarRect.right);
+    m_seekTooltipText = FormatTime(SeekRatioFromMouseX(clampedX) * m_state.duration);
+
+    POINT pt{ static_cast<LONG>(std::lround(clampedX)), 0 };
+    ClientToScreen(m_hWnd, &pt);
+
+    RECT barClient{};
+    GetClientRect(m_hWnd, &barClient);
+    POINT ptLeft{ barClient.left, 0 };
+    POINT ptRight{ barClient.right, 0 };
+    ClientToScreen(m_hWnd, &ptLeft);
+    ClientToScreen(m_hWnd, &ptRight);
+
+    int tipX = pt.x - kSeekTooltipWidth / 2;
+    int tipY = pt.y - kSeekTooltipHeight - kSeekTooltipGap;
+
+    if (ptRight.x - ptLeft.x >= kSeekTooltipWidth + 12)
+    {
+        tipX = std::clamp(tipX, static_cast<int>(ptLeft.x) + 6,
+            static_cast<int>(ptRight.x) - kSeekTooltipWidth - 6);
+    }
+
+    HMONITOR hMonitor = MonitorFromWindow(ownerHwnd ? ownerHwnd : m_hWnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{ sizeof(MONITORINFO) };
+    if (GetMonitorInfoW(hMonitor, &mi))
+    {
+        tipX = std::clamp(tipX, static_cast<int>(mi.rcMonitor.left),
+            static_cast<int>(mi.rcMonitor.right) - kSeekTooltipWidth);
+        if (tipY < mi.rcMonitor.top)
+        {
+            tipY = pt.y + kDefaultHeight + kSeekTooltipGap;
+        }
+        tipY = std::clamp(tipY, static_cast<int>(mi.rcMonitor.top),
+            static_cast<int>(mi.rcMonitor.bottom) - kSeekTooltipHeight);
+    }
+
+    const bool ownerTopMost = ownerHwnd && (GetWindowLongPtrW(ownerHwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    SetWindowPos(
+        m_seekTooltipHwnd,
+        ownerTopMost ? HWND_TOPMOST : HWND_TOP,
+        tipX,
+        tipY,
+        kSeekTooltipWidth,
+        kSeekTooltipHeight,
+        SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    InvalidateRect(m_seekTooltipHwnd, nullptr, FALSE);
+}
+
+void ControlBarView::HideSeekTooltip()
+{
+    if (m_seekTooltipHwnd && IsWindow(m_seekTooltipHwnd) && IsWindowVisible(m_seekTooltipHwnd))
+    {
+        ShowWindow(m_seekTooltipHwnd, SW_HIDE);
+    }
+}
+
+void ControlBarView::DrawSeekTooltip(HDC hdc)
+{
+    if (!m_seekTooltipHwnd || !IsWindow(m_seekTooltipHwnd) || !hdc)
+    {
+        return;
+    }
+
+    if (FAILED(CreateDeviceResources()))
+    {
+        return;
+    }
+
+    RECT rc{};
+    GetClientRect(m_seekTooltipHwnd, &rc);
+    if (rc.right <= rc.left || rc.bottom <= rc.top)
+    {
+        return;
+    }
+
+    if (FAILED(m_renderTarget->BindDC(hdc, &rc)))
+    {
+        DiscardDeviceResources();
+        return;
+    }
+
+    m_renderTarget->BeginDraw();
+
+    const D2D1_SIZE_F rtSize = m_renderTarget->GetSize();
+    m_renderTarget->Clear(D2D1::ColorF(0x1B1E28, 1.0f));
+    m_renderTarget->DrawRoundedRectangle(
+        D2D1::RoundedRect(D2D1::RectF(0.5f, 0.5f, rtSize.width - 0.5f, rtSize.height - 0.5f), 6.0f, 6.0f),
+        m_accentBrush.Get(),
+        1.0f);
+
+    if (!m_seekTooltipText.empty())
+    {
+        m_renderTarget->DrawTextW(
+            m_seekTooltipText.c_str(),
+            static_cast<UINT32>(m_seekTooltipText.length()),
+            m_speedTextFormat.Get(),
+            D2D1::RectF(4.0f, 0.0f, rtSize.width - 4.0f, rtSize.height),
+            m_barTextBrush.Get());
+    }
+
+    if (m_renderTarget->EndDraw() == D2DERR_RECREATE_TARGET)
+    {
+        DiscardDeviceResources();
+    }
+}
+
+LRESULT CALLBACK ControlBarView::SeekTooltipWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    ControlBarView* view = nullptr;
+
+    if (message == WM_NCCREATE)
+    {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        view = static_cast<ControlBarView*>(cs->lpCreateParams);
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(view));
+        view->m_seekTooltipHwnd = hWnd;
+    }
+    else
+    {
+        view = reinterpret_cast<ControlBarView*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+    }
+
+    if (view)
+    {
+        return view->HandleSeekTooltipMessage(hWnd, message, wParam, lParam);
+    }
+
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
+LRESULT ControlBarView::HandleSeekTooltipMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps{};
+        HDC hdc = BeginPaint(hWnd, &ps);
+        DrawSeekTooltip(hdc);
+        EndPaint(hWnd, &ps);
+        return 0;
+    }
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_NCHITTEST:
+        return HTTRANSPARENT;
+    case WM_MOUSEACTIVATE:
+        return MA_NOACTIVATE;
+    case WM_NCDESTROY:
+        if (m_seekTooltipHwnd == hWnd)
+        {
+            m_seekTooltipHwnd = nullptr;
         }
         SetWindowLongPtrW(hWnd, GWLP_USERDATA, 0);
         break;

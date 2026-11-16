@@ -39,8 +39,10 @@ public:
 private:
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK SpeedPopupWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK SeekTooltipWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandleSpeedPopupMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    LRESULT HandleSeekTooltipMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
     ATOM RegisterWindowClass(HINSTANCE hInstance) const;
     HRESULT CreateDeviceIndependentResources();
@@ -49,9 +51,14 @@ private:
 
     void Draw(HDC hdc);
     void DrawSpeedPopup(HDC hdc);
+    void DrawSeekTooltip(HDC hdc);
     void ShowSpeedPopup();
     void CloseSpeedPopup(bool restoreFocus = true);
     bool IsSpeedPopupOpen() const;
+    void UpdateSeekTooltip(float mouseX);
+    void HideSeekTooltip();
+    HWND GetRootOwnerHwnd() const;
+    double SeekRatioFromMouseX(float x) const;
     void DrawButton(const D2D1_RECT_F& rect, const std::wstring& label, IDWriteTextFormat* textFormat, bool active = false);
     static std::wstring FormatTime(double seconds);
     static bool PtInRectF(const D2D1_RECT_F& rect, float x, float y);
@@ -68,9 +75,11 @@ private:
     HWND m_parentHwnd = nullptr;
     HWND m_hWnd = nullptr;
     HWND m_speedPopupHwnd = nullptr;
+    HWND m_seekTooltipHwnd = nullptr;
     bool m_isVisible = true;
 
     ControlBarState m_state{};
+    std::wstring m_seekTooltipText;
     bool m_isDraggingSeek = false;
     bool m_isDraggingVolume = false;
     bool m_isTrackingMouse = false;

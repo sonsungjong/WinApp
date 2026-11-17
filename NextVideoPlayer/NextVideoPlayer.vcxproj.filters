@@ -223,15 +223,10 @@
     <None Include="ThirdParty\libwebsockets\NOTICE.txt">
       <Filter>ThirdParty\libwebsockets</Filter>
     </None>
-    <None Include="ThirdParty\libwebsockets\README.md">
-      <Filter>ThirdParty\libwebsockets</Filter>
-    </None>
     <None Include="ThirdParty\libwebsockets\dependency.json">
       <Filter>ThirdParty\libwebsockets</Filter>
     </None>
-    <None Include="API\README.md" />
     <None Include="API\Send-PlayerCommand.ps1" />
-    <None Include="Tests\api_integration.py" />
     <ResourceCompile Include="NextVideoPlayer.rc">
       <Filter>리소스 파일</Filter>
     </ResourceCompile>
@@ -281,22 +276,10 @@
     <None Include="Packaging\Package.config.json">
       <Filter>Packaging</Filter>
     </None>
-    <None Include="Packaging\README.md">
-      <Filter>Packaging</Filter>
-    </None>
-    <None Include="Packaging\ReleaseRepository.README.md">
-      <Filter>Packaging</Filter>
-    </None>
     <None Include="Packaging\Test-MsiLifecycle.ps1">
       <Filter>Packaging</Filter>
     </None>
     <None Include="Packaging\Test-Packages.ps1">
-      <Filter>Packaging</Filter>
-    </None>
-    <None Include="Packaging\Tests\ConfigService.Tests.cpp">
-      <Filter>Packaging</Filter>
-    </None>
-    <None Include="Packaging\Tests\ConfigService.Tests.vcxproj">
       <Filter>Packaging</Filter>
     </None>
     <None Include="ThirdParty\cJSON\LICENSE">

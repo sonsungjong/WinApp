@@ -1,5 +1,4 @@
-#requires -Version 7.0
-# Author a standard Windows Installer database through the Windows SDK automation
+﻿# Author a standard Windows Installer database through the Windows SDK automation
 # API. No WiX extension, global tool installation, executable custom action, or
 # third-party build-tool subscription is required.
 function New-PlayerMsi {
@@ -20,7 +19,12 @@ function New-PlayerMsi {
         if ($null -ne $Object) { $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($Object) }
     }
     function Get-StableMsiGuid([string]$Name) {
-        $bytes = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes("NextVideoPlayer:$Name"))
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = $sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes("NextVideoPlayer:$Name"))
+        } finally {
+            $sha256.Dispose()
+        }
         return ([guid]::new([byte[]]$bytes[0..15])).ToString('B').ToUpperInvariant()
     }
     $installer = New-Object -ComObject WindowsInstaller.Installer
@@ -71,19 +75,25 @@ function New-PlayerMsi {
     New-Item -ItemType Directory -Path $cabDirectory -Force | Out-Null
     $ddf = @('.OPTION EXPLICIT', '.Set Cabinet=ON', '.Set Compress=ON', '.Set CompressionType=LZX',
         '.Set CompressionMemory=21', '.Set MaxDiskSize=0', '.Set CabinetNameTemplate=payload.cab',
-        ('.Set DiskDirectoryTemplate="' + [IO.Path]::GetRelativePath($PayloadDirectory,$cabDirectory) + '"'),
-        ('.Set RptFileName="' + [IO.Path]::GetRelativePath($PayloadDirectory,"$WorkDirectory\makecab.rpt") + '"'),
-        ('.Set InfFileName="' + [IO.Path]::GetRelativePath($PayloadDirectory,"$WorkDirectory\makecab.inf") + '"'))
+        ('.Set DiskDirectoryTemplate="' + (Get-RelativePath $PayloadDirectory $cabDirectory) + '"'),
+        ('.Set RptFileName="' + (Get-RelativePath $PayloadDirectory "$WorkDirectory\makecab.rpt") + '"'),
+        ('.Set InfFileName="' + (Get-RelativePath $PayloadDirectory "$WorkDirectory\makecab.inf") + '"'))
     for ($i = 0; $i -lt $files.Count; ++$i) {
-        $ddf += ('"{0}" F{1:D4}' -f [IO.Path]::GetRelativePath($PayloadDirectory,$files[$i].FullName), ($i + 1))
+        $ddf += ('"{0}" F{1:D4}' -f (Get-RelativePath $PayloadDirectory $files[$i].FullName), ($i + 1))
     }
     $ddfPath = Join-Path $WorkDirectory 'payload.ddf'
     $ddf | Set-Content -LiteralPath $ddfPath -Encoding ascii
     Push-Location $PayloadDirectory
     try {
         $cabLog = Join-Path $WorkDirectory 'makecab-console.log'
-        & (Join-Path $env:WINDIR 'System32\makecab.exe') /F $ddfPath /V0 *> $cabLog
-        if ($LASTEXITCODE -ne 0) { throw "Cabinet generation failed. See $cabLog" }
+        $prevErrAction = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & (Join-Path $env:WINDIR 'System32\makecab.exe') /F $ddfPath /V0 *> $cabLog
+            if ($LASTEXITCODE -ne 0) { throw "Cabinet generation failed. See $cabLog" }
+        } finally {
+            $ErrorActionPreference = $prevErrAction
+        }
     }
     finally { Pop-Location }
 
@@ -155,7 +165,7 @@ function New-PlayerMsi {
         $directories = @{ '' = 'INSTALLFOLDER' }
         for ($i = 0; $i -lt $files.Count; ++$i) {
             $file = $files[$i]
-            $relative = [IO.Path]::GetRelativePath($PayloadDirectory,$file.FullName)
+            $relative = Get-RelativePath $PayloadDirectory $file.FullName
             $parent = [IO.Path]::GetDirectoryName($relative)
             $parts = if ($parent) { @($parent.Split('\')) } else { @() }
             $current = ''; $parentId = 'INSTALLFOLDER'

@@ -1,5 +1,4 @@
-#requires -Version 7.0
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('All','MSI','MSIX')][string]$Target = 'All',
     [string]$StoreIdentityName,
@@ -37,7 +36,11 @@ if ($ForStore -and $version.Major -eq 0) {
 }
 $tools = Get-PackageBuildTools
 $artifactRoot = Join-Path $projectRoot 'artifacts\packaging'
-$run = Join-Path $artifactRoot ('runs\' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+$runsRoot = Join-Path $artifactRoot 'runs'
+if (Test-Path -LiteralPath $runsRoot -PathType Container) {
+    Get-ChildItem -LiteralPath $runsRoot -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
+$run = Join-Path $runsRoot ((Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8))
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $projectRoot "artifacts\packages\$($version.ToString(3))"
     if ($ForStore) { $OutputDirectory = Join-Path $OutputDirectory 'store' }
@@ -84,7 +87,13 @@ Get-ChildItem -LiteralPath $tools.Crt -Filter '*.dll' -File | Copy-Item -Destina
 # Fetch redistributable components, never copy a graphics-driver DLL from System32.
 $runtimeArchive = Get-VerifiedArchive $config.VulkanRuntime.Url $config.VulkanRuntime.Sha256 (Join-Path $artifactRoot 'cache')
 $runtimeDirectory = Join-Path $run 'vulkan-runtime'
-Expand-Archive -LiteralPath $runtimeArchive -DestinationPath $runtimeDirectory
+$previousProgress = $ProgressPreference
+$ProgressPreference = 'SilentlyContinue'
+try {
+    Expand-Archive -LiteralPath $runtimeArchive -DestinationPath $runtimeDirectory
+} finally {
+    $ProgressPreference = $previousProgress
+}
 $vulkan = @(Get-ChildItem -LiteralPath $runtimeDirectory -Filter 'vulkan-1.dll' -Recurse -File | Where-Object {
     $bytes = [IO.File]::ReadAllBytes($_.FullName)
     $peOffset = [BitConverter]::ToInt32($bytes,0x3c)
@@ -95,13 +104,13 @@ Copy-Item -LiteralPath $vulkan[0].FullName -Destination $payload
 $runtimeNotices = @(Get-ChildItem -LiteralPath $runtimeDirectory -Recurse -File | Where-Object Name -Match '(?i)license|copyright|notice')
 if ($runtimeNotices.Count -eq 0) { throw 'Vulkan runtime license notices are missing.' }
 foreach ($notice in $runtimeNotices) {
-    $noticePath = Join-Path $licenseDirectory ('Vulkan\' + [IO.Path]::GetRelativePath($runtimeDirectory,$notice.FullName))
+    $noticePath = Join-Path $licenseDirectory ('Vulkan\' + (Get-RelativePath $runtimeDirectory $notice.FullName))
     New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($noticePath)) -Force | Out-Null
     Copy-Item -LiteralPath $notice.FullName -Destination $noticePath
 }
 $sdkScript = Get-Content -LiteralPath (Join-Path $projectRoot 'setup_sdk.bat') -Raw
 $mpvSourceUrl = [regex]::Match($sdkScript,'set "ARCHIVE_URL=([^\"]+)"').Groups[1].Value
-@"
+$sourcesContent = @"
 NextVideoPlayer third-party component provenance
 
 libmpv SDK archive: $mpvSourceUrl
@@ -121,7 +130,8 @@ The notices here describe bundled components, not a license for NextVideoPlayer 
 Before public distribution, provide corresponding third-party library sources and
 build information as required by the licenses for the exact binaries distributed.
 An upstream homepage alone does not replace those source-distribution requirements.
-"@ | Set-Content -LiteralPath (Join-Path $licenseDirectory 'COMPONENT-SOURCES.txt') -Encoding utf8
+"@
+Write-Utf8NoBomFile (Join-Path $licenseDirectory 'COMPONENT-SOURCES.txt') ($sourcesContent + [Environment]::NewLine)
 
 if ($CertificateThumbprint) {
     foreach ($binary in Get-ChildItem -LiteralPath $payload -File | Where-Object Extension -In '.exe','.dll') {
@@ -169,12 +179,13 @@ $hashLines = foreach ($package in $createdPackages) {
     '{0}  {1}' -f (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant(),[IO.Path]::GetFileName($package)
 }
 $hashLines | Set-Content -LiteralPath (Join-Path $OutputDirectory 'SHA256SUMS.txt') -Encoding ascii
-[ordered]@{Version=$version.ToString();Target=$Target;IdentityName=$config.IdentityName;Publisher=$config.Publisher;
+$buildInfoJson = [ordered]@{Version=$version.ToString();Target=$Target;IdentityName=$config.IdentityName;Publisher=$config.Publisher;
     PublisherDisplayName=$config.PublisherDisplayName;
     ForStore=[bool]$ForStore;Signed=[bool]$CertificateThumbprint;PayloadDirectory=$payload;Packages=$createdPackages;
     PayloadFiles=@(Get-ChildItem -LiteralPath $payload -Recurse -File | ForEach-Object {
-        @{Path=[IO.Path]::GetRelativePath($payload,$_.FullName);Sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}
-    })} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'build-info.json') -Encoding utf8
+        @{Path=(Get-RelativePath $payload $_.FullName);Sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}
+    })} | ConvertTo-Json -Depth 5
+Write-Utf8NoBomFile (Join-Path $OutputDirectory 'build-info.json') ($buildInfoJson + [Environment]::NewLine)
 Write-Host "Packages: $OutputDirectory"
 if ($isDevelopmentIdentity -and $Target -in 'All','MSIX') { Write-Host 'MSIX uses a DEVELOPMENT identity. Configure Partner Center identity values before Store submission.' }
 if (-not $CertificateThumbprint) { Write-Host 'Packages are unsigned. Store can re-sign MSIX; local MSIX installation requires a trusted signing certificate.' }

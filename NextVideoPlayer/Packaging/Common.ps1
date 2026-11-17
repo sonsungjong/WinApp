@@ -1,6 +1,41 @@
-#requires -Version 7.0
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    $cleanedModulePaths = @(foreach ($entry in ($env:PSModulePath -split ';')) {
+        if ($entry -and $entry -notmatch '(?i)\\PowerShell\\') { $entry }
+    })
+    $sysModules = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\Modules'
+    if ($cleanedModulePaths -notcontains $sysModules) { $cleanedModulePaths += $sysModules }
+    $env:PSModulePath = $cleanedModulePaths -join ';'
+}
+
+function Get-RelativePath {
+    param([string]$BasePath, [string]$TargetPath)
+    $baseFull = [IO.Path]::GetFullPath($BasePath).TrimEnd('\', '/')
+    $targetFull = [IO.Path]::GetFullPath($TargetPath)
+    $targetTrimmed = $targetFull.TrimEnd('\', '/')
+    if ($baseFull.Equals($targetTrimmed, [StringComparison]::OrdinalIgnoreCase)) { return '.' }
+    $baseParts = @($baseFull.Split(@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)))
+    $targetParts = @($targetFull.Split(@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)))
+    if (-not $baseParts[0].Equals($targetParts[0], [StringComparison]::OrdinalIgnoreCase)) {
+        return $targetFull
+    }
+    $common = 0
+    $limit = [Math]::Min($baseParts.Length, $targetParts.Length)
+    while ($common -lt $limit -and $baseParts[$common].Equals($targetParts[$common], [StringComparison]::OrdinalIgnoreCase)) {
+        ++$common
+    }
+    $segments = New-Object Collections.Generic.List[string]
+    for ($i = $common; $i -lt $baseParts.Length; ++$i) { $segments.Add('..') }
+    for ($i = $common; $i -lt $targetParts.Length; ++$i) { $segments.Add($targetParts[$i]) }
+    return ($segments -join '\')
+}
+
+function Write-Utf8NoBomFile {
+    param([string]$Path, [string]$Content)
+    [IO.File]::WriteAllText($Path, $Content, [Text.UTF8Encoding]::new($false))
+}
 
 function Invoke-PackageTool {
     param([string]$Tool, [string[]]$Arguments)
@@ -58,7 +93,14 @@ function Get-VerifiedArchive {
     if (-not (Test-Path -LiteralPath $archive)) {
         Write-Host "Downloading packaging dependency: $Url"
         $temporaryPath = "$archive.$([guid]::NewGuid().ToString('N')).download"
-        Invoke-WebRequest -Uri $Url -OutFile $temporaryPath
+        $previousProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $Url -OutFile $temporaryPath -UseBasicParsing
+        } finally {
+            $ProgressPreference = $previousProgress
+        }
         if ((Get-FileHash -LiteralPath $temporaryPath -Algorithm SHA256).Hash -ne $Sha256) {
             throw "SHA256 mismatch: $temporaryPath"
         }

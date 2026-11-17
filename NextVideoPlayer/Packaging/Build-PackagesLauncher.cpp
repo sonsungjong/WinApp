@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <cwctype>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -34,9 +35,41 @@ struct EnvironmentKeyLess
     }
 };
 
-std::wstring ChildEnvironment()
+std::wstring SanitizeWindowsPowerShellModulePath(const std::wstring& value)
+{
+    auto containsInsensitive = [](const std::wstring& haystack, const std::wstring& needle) {
+        if (needle.size() > haystack.size()) return false;
+        for (size_t i = 0; i <= haystack.size() - needle.size(); ++i)
+        {
+            if (CompareStringOrdinal(haystack.c_str() + i, static_cast<int>(needle.size()),
+                needle.c_str(), static_cast<int>(needle.size()), TRUE) == CSTR_EQUAL)
+                return true;
+        }
+        return false;
+    };
+
+    std::wstring filtered;
+    size_t start = 0;
+    while (start <= value.size())
+    {
+        const size_t sep = value.find(L';', start);
+        const std::wstring item = (sep == std::wstring::npos)
+            ? value.substr(start) : value.substr(start, sep - start);
+        if (!item.empty() && !containsInsensitive(item, L"\\PowerShell\\"))
+        {
+            if (!filtered.empty()) filtered += L';';
+            filtered += item;
+        }
+        if (sep == std::wstring::npos) break;
+        start = sep + 1;
+    }
+    return filtered;
+}
+
+std::wstring ChildEnvironment(bool sanitizePsModulePath)
 {
     // Some launch environments contain both PATH and Path, which breaks MSBuild.
+    // Also strip PowerShell 7 module paths when launching Windows PowerShell 5.1.
     // Deduplicate only the child environment; never change the user's settings.
     std::map<std::wstring, std::wstring, EnvironmentKeyLess> variables;
     LPWCH environment = GetEnvironmentStringsW();
@@ -50,6 +83,12 @@ std::wstring ChildEnvironment()
             variables[value.substr(0, separator)] = value.substr(separator + 1);
     }
     FreeEnvironmentStringsW(environment);
+    if (sanitizePsModulePath)
+    {
+        auto it = variables.find(L"PSModulePath");
+        if (it != variables.end())
+            it->second = SanitizeWindowsPowerShellModulePath(it->second);
+    }
     std::wstring result;
     for (const auto& [name, value] : variables)
     {
@@ -63,6 +102,19 @@ std::wstring ChildEnvironment()
 std::filesystem::path FindPowerShell()
 {
     std::vector<wchar_t> buffer(32768);
+    const UINT sysLen = GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+    if (sysLen && sysLen < buffer.size())
+    {
+        const auto windowsPowerShell =
+            std::filesystem::path(buffer.data()) / L"WindowsPowerShell" / L"v1.0" / L"powershell.exe";
+        if (std::filesystem::is_regular_file(windowsPowerShell))
+            return windowsPowerShell;
+    }
+    const DWORD foundBuiltin = SearchPathW(nullptr, L"powershell.exe", nullptr,
+        static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+    if (foundBuiltin && foundBuiltin < buffer.size())
+        return std::filesystem::path(buffer.data());
+
     const DWORD length = GetEnvironmentVariableW(L"ProgramFiles", buffer.data(),
         static_cast<DWORD>(buffer.size()));
     if (length && length < buffer.size())
@@ -71,9 +123,9 @@ std::filesystem::path FindPowerShell()
         if (std::filesystem::is_regular_file(installed))
             return installed;
     }
-    const DWORD found = SearchPathW(nullptr, L"pwsh.exe", nullptr,
+    const DWORD foundPwsh = SearchPathW(nullptr, L"pwsh.exe", nullptr,
         static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
-    return found && found < buffer.size() ? std::filesystem::path(buffer.data()) : std::filesystem::path();
+    return foundPwsh && foundPwsh < buffer.size() ? std::filesystem::path(buffer.data()) : std::filesystem::path();
 }
 
 int Run(bool noOpen)
@@ -96,17 +148,19 @@ int Run(bool noOpen)
     const auto powerShell = FindPowerShell();
     if (powerShell.empty())
     {
-        Print(L"개발 PC에 PowerShell 7이 필요합니다. 설치 후 다시 실행해 주세요.\r\n");
+        Print(L"Windows PowerShell(powershell.exe)을 찾을 수 없습니다.\r\n");
         return 1;
     }
-    auto environment = ChildEnvironment();
+    const bool usingWindowsPowerShell =
+        CompareStringOrdinal(powerShell.filename().c_str(), -1, L"powershell.exe", -1, TRUE) == CSTR_EQUAL;
+    auto environment = ChildEnvironment(usingWindowsPowerShell);
     if (environment.empty())
     {
         Print(L"빌드 실행 환경을 준비하지 못했습니다.\r\n");
         return 1;
     }
-    std::wstring command = L"\"" + powerShell.wstring() + L"\" -NoLogo -NoProfile -File \"" +
-        script.wstring() + L"\"";
+    std::wstring command = L"\"" + powerShell.wstring() +
+        L"\" -NoLogo -NoProfile -ExecutionPolicy Bypass -File \"" + script.wstring() + L"\"";
     if (noOpen)
         command += L" -NoOpen";
 

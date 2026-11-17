@@ -269,12 +269,9 @@
   <ItemGroup>
     <None Include="setup_websocket.ps1" />
     <None Include="AppInfo.json" />
-    <None Include="API\README.md" />
     <None Include="API\Send-PlayerCommand.ps1" />
-    <None Include="Tests\api_integration.py" />
     <None Include="ThirdParty\libwebsockets\LICENSE.txt" />
     <None Include="ThirdParty\libwebsockets\NOTICE.txt" />
-    <None Include="ThirdParty\libwebsockets\README.md" />
     <None Include="ThirdParty\libwebsockets\dependency.json" />
     <None Include="Packaging\AppxManifest.xml" />
     <None Include="Packaging\Build-Packages.ps1" />
@@ -288,12 +285,8 @@
     <None Include="Packaging\Msi-UserInterface.ps1" />
     <None Include="Packaging\New-Msi.ps1" />
     <None Include="Packaging\Package.config.json" />
-    <None Include="Packaging\README.md" />
-    <None Include="Packaging\ReleaseRepository.README.md" />
     <None Include="Packaging\Test-MsiLifecycle.ps1" />
     <None Include="Packaging\Test-Packages.ps1" />
-    <None Include="Packaging\Tests\ConfigService.Tests.cpp" />
-    <None Include="Packaging\Tests\ConfigService.Tests.vcxproj" />
     <None Include="ThirdParty\cJSON\LICENSE" />
     <None Include="LICENSE.txt" />
     <None Include="Readme.md" />

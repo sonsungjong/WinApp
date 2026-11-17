@@ -1,7 +1,15 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([ValidateSet('Debug','Release')][string]$Configuration='Release',
       [ValidateSet('x64','Win32')][string]$Platform='x64')
 $ErrorActionPreference='Stop'
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    $cleanedModulePaths=@(foreach ($entry in ($env:PSModulePath -split ';')) {
+        if ($entry -and $entry -notmatch '(?i)\\PowerShell\\') { $entry }
+    })
+    $sysModules=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\Modules'
+    if ($cleanedModulePaths -notcontains $sysModules) { $cleanedModulePaths+=$sysModules }
+    $env:PSModulePath=$cleanedModulePaths -join ';'
+}
 $projectRoot=$PSScriptRoot
 $lock=Get-Content -LiteralPath "$projectRoot\ThirdParty\libwebsockets\dependency.json" -Raw | ConvertFrom-Json
 $base=Join-Path $projectRoot 'artifacts\lws'
@@ -21,13 +29,20 @@ if (-not $cmake) {
 if (-not (Test-Path -LiteralPath $cmakePath)) { throw 'CMake is required. Install the Visual Studio C++ CMake tools.' }
 New-Item -ItemType Directory -Path $base -Force | Out-Null
 $archive=Join-Path $projectRoot ('artifacts\dependencies\libwebsockets-'+$lock.revision+'.zip')
-if (-not (Test-Path -LiteralPath $archive)) {
-    New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($archive)) -Force | Out-Null
-    Invoke-WebRequest -Uri $lock.url -OutFile $archive
+$previousProgress=$ProgressPreference
+$ProgressPreference='SilentlyContinue'
+try {
+    if (-not (Test-Path -LiteralPath $archive)) {
+        New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($archive)) -Force | Out-Null
+        [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $lock.url -OutFile $archive -UseBasicParsing
+    }
+    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $lock.sha256) { throw 'libwebsockets archive SHA256 mismatch.' }
+    $source=Join-Path ([IO.Path]::GetDirectoryName($archive)) ('libwebsockets-'+$lock.revision)
+    if (-not (Test-Path -LiteralPath "$source\CMakeLists.txt")) { Expand-Archive -LiteralPath $archive -DestinationPath ([IO.Path]::GetDirectoryName($archive)) }
+} finally {
+    $ProgressPreference=$previousProgress
 }
-if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $lock.sha256) { throw 'libwebsockets archive SHA256 mismatch.' }
-$source=Join-Path ([IO.Path]::GetDirectoryName($archive)) ('libwebsockets-'+$lock.revision)
-if (-not (Test-Path -LiteralPath "$source\CMakeLists.txt")) { Expand-Archive -LiteralPath $archive -DestinationPath ([IO.Path]::GetDirectoryName($archive)) }
 $options=@(
     '-DLWS_WITH_STATIC=ON','-DLWS_WITH_SHARED=OFF','-DLWS_WITHOUT_TESTAPPS=ON',
     '-DLWS_WITH_MINIMAL_EXAMPLES=OFF','-DLWS_WITH_SSL=OFF','-DLWS_WITH_SCHANNEL=OFF',

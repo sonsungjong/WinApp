@@ -1,5 +1,4 @@
-#requires -Version 7.0
-# Explicit integration test: installs isolated validation copies, never the actual
+﻿# Explicit integration test: installs isolated validation copies, never the actual
 # product ID, and uninstalls them in finally. The player is never launched.
 [CmdletBinding()]
 param([string]$PackageDirectory,
@@ -148,11 +147,13 @@ try {
     Release-Com $installer
 }
 if ($PrepareOnly) {
-    [ordered]@{Directory=$root;Msi=(Join-Path $root 'validation-0.msi');Products=$products;InstallDirectory=$installDirectory;ShortcutName=$shortcutName} |
-        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'ui-test-info.json') -Encoding utf8
+    $uiInfoJson = [ordered]@{Directory=$root;Msi=(Join-Path $root 'validation-0.msi');Products=$products;InstallDirectory=$installDirectory;ShortcutName=$shortcutName} |
+        ConvertTo-Json
+    Write-Utf8NoBomFile (Join-Path $root 'ui-test-info.json') ($uiInfoJson + [Environment]::NewLine)
     Write-Host "Prepared isolated MSI for UI verification: $root"
     exit 0
 }
 if (Test-Path -LiteralPath (Join-Path $installDirectory 'NextVideoPlayer.exe')) { throw 'Uninstall left the executable installed.' }
 if ((Test-Path -LiteralPath $desktopLink) -or (Test-Path -LiteralPath $startMenuLink)) { throw 'Uninstall left a validation shortcut behind.' }
-Write-Host "PASS: MSI upgrade and uninstall. Player was never launched. Logs: $root"
+if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
+Write-Host 'PASS: MSI upgrade and uninstall. Player was never launched.'

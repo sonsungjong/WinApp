@@ -1,5 +1,4 @@
-#requires -Version 7.0
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([switch]$NoOpen)
 
 $ErrorActionPreference = 'Stop'

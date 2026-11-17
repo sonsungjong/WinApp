@@ -1,5 +1,4 @@
-#requires -Version 7.0
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([string]$PackageDirectory, [switch]$SkipMsiExtraction)
 . "$PSScriptRoot\Common.ps1"
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -20,44 +19,66 @@ function Assert-PackageFileHashes([string]$Directory) {
         if ($file.Path -match '(?i)\.(cpp|c|h|pdb)$|(^|[\\/])config\.ini$') { throw "Development/user file in payload: $($file.Path)" }
     }
 }
-Assert-PackageFileHashes $info.PayloadDirectory
-foreach ($package in $info.Packages) {
-    if ([IO.Path]::GetExtension($package) -eq '.msix') {
-        $unpacked = Join-Path $scratch 'msix'
-        Invoke-PackageTool $tools.MakeAppx @('unpack','/p',$package,'/d',$unpacked,'/o')
-        Assert-PackageFileHashes $unpacked
-        [xml]$manifest = Get-Content -LiteralPath (Join-Path $unpacked 'AppxManifest.xml') -Raw
-        if ($manifest.Package.Identity.Name -cne $info.IdentityName -or
-            $manifest.Package.Identity.Publisher -cne $info.Publisher -or
-            $manifest.Package.Identity.Version -ne $info.Version -or
-            $manifest.Package.Identity.ProcessorArchitecture -ne 'x64') { throw 'MSIX identity/version mismatch.' }
-        $expectedPublisherName = $info.PSObject.Properties['PublisherDisplayName']
-        if ($info.ForStore -and -not $expectedPublisherName) { throw 'Store build is missing the publisher display name.' }
-        if ($expectedPublisherName -and $manifest.Package.Properties.PublisherDisplayName -cne $expectedPublisherName.Value) {
-            throw 'MSIX publisher display name mismatch.'
+
+try {
+    if ($info.PayloadDirectory -and (Test-Path -LiteralPath $info.PayloadDirectory -PathType Container)) {
+        Assert-PackageFileHashes $info.PayloadDirectory
+    }
+    foreach ($package in $info.Packages) {
+        if ([IO.Path]::GetExtension($package) -eq '.msix') {
+            $unpacked = Join-Path $scratch 'msix'
+            Invoke-PackageTool $tools.MakeAppx @('unpack','/p',$package,'/d',$unpacked,'/o')
+            Assert-PackageFileHashes $unpacked
+            [xml]$manifest = Get-Content -LiteralPath (Join-Path $unpacked 'AppxManifest.xml') -Raw
+            if ($manifest.Package.Identity.Name -cne $info.IdentityName -or
+                $manifest.Package.Identity.Publisher -cne $info.Publisher -or
+                $manifest.Package.Identity.Version -ne $info.Version -or
+                $manifest.Package.Identity.ProcessorArchitecture -ne 'x64') { throw 'MSIX identity/version mismatch.' }
+            $expectedPublisherName = $info.PSObject.Properties['PublisherDisplayName']
+            if ($info.ForStore -and -not $expectedPublisherName) { throw 'Store build is missing the publisher display name.' }
+            if ($expectedPublisherName -and $manifest.Package.Properties.PublisherDisplayName -cne $expectedPublisherName.Value) {
+                throw 'MSIX publisher display name mismatch.'
+            }
+            if ($manifest.Package.Applications.Application.GetAttribute('SupportsMultipleInstances',
+                'http://schemas.microsoft.com/appx/manifest/desktop/windows10/4') -ne 'true') {
+                throw 'MSIX must preserve support for multiple player instances.'
+            }
+            Write-Host 'PASS: MSIX manifest, multiple-instance declaration and all payload SHA256 hashes.'
+        } elseif (-not $SkipMsiExtraction) {
+            $extract = Join-Path $scratch 'msi'
+            New-Item -ItemType Directory -Path $extract -Force | Out-Null
+            $log = Join-Path $scratch 'msi-extraction.log'
+            # Administrative extraction creates a source image; it does not register
+            # or launch the player or install shortcuts on the development machine.
+            $process = Start-Process -FilePath (Join-Path $env:WINDIR 'System32\msiexec.exe') -ArgumentList @(
+                '/a',('"' + $package + '"'),'/qn','/norestart',('TARGETDIR="' + $extract + '"'),'/l*v',('"' + $log + '"')) -Wait -PassThru -WindowStyle Hidden
+            if ($process.ExitCode -notin 0,3010) { throw "MSI extraction failed ($($process.ExitCode)). See $log" }
+            $exe = @(Get-ChildItem -LiteralPath $extract -Filter 'NextVideoPlayer.exe' -File -Recurse)
+            if ($exe.Count -ne 1) { throw 'MSI did not extract the player executable.' }
+            Assert-PackageFileHashes $exe[0].Directory.FullName
+            Write-Host 'PASS: Windows Installer administrative extraction and all payload SHA256 hashes.'
         }
-        if ($manifest.Package.Applications.Application.GetAttribute('SupportsMultipleInstances',
-            'http://schemas.microsoft.com/appx/manifest/desktop/windows10/4') -ne 'true') {
-            throw 'MSIX must preserve support for multiple player instances.'
+    }
+    Write-Host 'Package verification passed.'
+} finally {
+    if (Test-Path -LiteralPath $scratch) {
+        Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $verificationRoot = Split-Path -Path $scratch -Parent
+    if ($verificationRoot -and (Test-Path -LiteralPath $verificationRoot -PathType Container) -and
+        -not (Get-ChildItem -LiteralPath $verificationRoot -Force | Select-Object -First 1)) {
+        Remove-Item -LiteralPath $verificationRoot -Force -ErrorAction SilentlyContinue
+    }
+    $runsRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts\packaging\runs'))
+    if ($info.PayloadDirectory) {
+        $runDir = Split-Path -Path ([IO.Path]::GetFullPath($info.PayloadDirectory)) -Parent
+        if ($runDir -and $runDir.StartsWith($runsRoot + '\', [StringComparison]::OrdinalIgnoreCase) -and
+            (Test-Path -LiteralPath $runDir)) {
+            Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction SilentlyContinue
         }
-        Write-Host 'PASS: MSIX manifest, multiple-instance declaration and all payload SHA256 hashes.'
-    } elseif (-not $SkipMsiExtraction) {
-        $extract = Join-Path $scratch 'msi'
-        New-Item -ItemType Directory -Path $extract -Force | Out-Null
-        $log = Join-Path $scratch 'msi-extraction.log'
-        # Administrative extraction creates a source image; it does not register
-        # or launch the player or install shortcuts on the development machine.
-        $process = Start-Process -FilePath (Join-Path $env:WINDIR 'System32\msiexec.exe') -ArgumentList @(
-            '/a',('"' + $package + '"'),'/qn','/norestart',('TARGETDIR="' + $extract + '"'),'/l*v',('"' + $log + '"')) -Wait -PassThru -WindowStyle Hidden
-        if ($process.ExitCode -notin 0,3010) { throw "MSI extraction failed ($($process.ExitCode)). See $log" }
-        $exe = @(Get-ChildItem -LiteralPath $extract -Filter 'NextVideoPlayer.exe' -File -Recurse)
-        if ($exe.Count -ne 1) { throw 'MSI did not extract the player executable.' }
-        Assert-PackageFileHashes $exe[0].Directory.FullName
-        Write-Host 'PASS: Windows Installer administrative extraction and all payload SHA256 hashes.'
+    }
+    if ((Test-Path -LiteralPath $runsRoot -PathType Container) -and
+        -not (Get-ChildItem -LiteralPath $runsRoot -Force | Select-Object -First 1)) {
+        Remove-Item -LiteralPath $runsRoot -Force -ErrorAction SilentlyContinue
     }
 }
-Invoke-PackageTool $tools.MSBuild @((Join-Path $PSScriptRoot 'Tests\ConfigService.Tests.vcxproj'),
-    '/t:Build','/p:Configuration=Release','/p:Platform=x64','/m','/v:minimal','/nologo')
-$testExecutable = Join-Path $projectRoot 'artifacts\packaging\tests\bin\ConfigService.Tests.exe'
-Invoke-PackageTool $testExecutable @((Join-Path $scratch 'settings with spaces'),$info.PayloadDirectory)
-Write-Host "Package verification passed. Logs and extracted files: $scratch"

@@ -16,6 +16,7 @@ export interface SessionItem {
   override_model: string | null;
   is_active: boolean;
   is_streaming?: boolean;
+  live_status?: string;
   last_activity_at: number | null;
   message_count: number;
   api_call_count: number;
@@ -98,6 +99,7 @@ export interface MessageItem {
   tool_call_id: string | null;
   reasoning?: string;
   display_kind?: string | null;
+  error_detail?: string | null;
   timestamp: number | null;
 }
 

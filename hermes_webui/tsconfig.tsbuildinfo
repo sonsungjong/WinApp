@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/chatview.tsx","./src/components/mcptoolsview.tsx","./src/components/modelscatalogview.tsx","./src/components/workspaceview.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/chatview.tsx","./src/components/mcptoolsview.tsx","./src/components/modelscatalogview.tsx","./src/components/workspaceview.tsx","./src/utils/formatmessage.tsx"],"version":"5.9.3"}

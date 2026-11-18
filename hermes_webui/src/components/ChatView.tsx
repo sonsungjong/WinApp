@@ -6,7 +6,9 @@ import type {
   OverviewResponse,
   ProviderOption,
   SessionItem,
+  ToolCallItem,
 } from "../types";
+import { renderFormattedMessage } from "../utils/formatMessage";
 
 interface ChatViewProps {
   session: SessionItem | null;
@@ -47,23 +49,35 @@ function formatCtx(ctx?: number | null): string {
   return String(ctx);
 }
 
-function renderFormattedText(text: string) {
-  const parts = text.split(/(```[\s\S]*?```)/g);
-  return parts.map((part, idx) => {
-    if (part.startsWith("```") && part.endsWith("```")) {
-      const inner = part.slice(3, -3).replace(/^[a-zA-Z0-9_-]+\n/, "");
-      return (
-        <pre key={idx} className="chat-code-block">
-          <code>{inner}</code>
-        </pre>
-      );
+function formatToolCallsForDisplay(toolCalls: ToolCallItem[]): string {
+  const formatted = toolCalls.map((call) => {
+    let parsedArgs: unknown = call.arguments;
+    if (typeof call.arguments === "string" && call.arguments.trim()) {
+      try {
+        parsedArgs = JSON.parse(call.arguments);
+      } catch {
+        parsedArgs = call.arguments;
+      }
     }
-    return (
-      <span key={idx} className="chat-plain-text">
-        {part}
-      </span>
-    );
+    return {
+      id: call.id,
+      name: call.name,
+      arguments: parsedArgs,
+    };
   });
+  return JSON.stringify(formatted, null, 2);
+}
+
+function formatToolResultForDisplay(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      return JSON.stringify(JSON.parse(trimmed), null, 2);
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
 }
 
 export function ChatView(props: ChatViewProps) {
@@ -98,7 +112,7 @@ export function ChatView(props: ChatViewProps) {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages.length, liveStream?.text, liveStream?.tools.length, session?.id]);
+  }, [messages.length, liveStream?.text, liveStream?.tools.length, session?.id, session?.is_streaming]);
 
   const currentProvider = providers.find((p) => p.slug === selectedProvider) ?? providers[0];
   const modelDetails = currentProvider?.model_details ?? [];
@@ -125,6 +139,12 @@ export function ChatView(props: ChatViewProps) {
   }
 
   const isStreaming = Boolean(session.is_streaming || liveStream);
+  const streamingLabel =
+    session.live_status === "waiting"
+      ? "입력/승인 대기 중"
+      : session.live_status === "starting"
+        ? "요청 시작 중"
+        : "응답 생성 중";
 
   return (
     <div className="chat-shell">
@@ -142,6 +162,12 @@ export function ChatView(props: ChatViewProps) {
           </div>
         </div>
         <div className="chat-topbar-actions">
+          {isStreaming && (
+            <span className="streaming-pill">
+              <span className="pulse-dot" />
+              {streamingLabel}
+            </span>
+          )}
           <button className="btn-ghost" onClick={onToggleInspector} type="button">
             {inspectorOpen ? "인스펙터 숨기기" : "인스펙터 열기"}
           </button>
@@ -156,6 +182,10 @@ export function ChatView(props: ChatViewProps) {
         )}
 
         {messages.map((msg) => {
+          if (msg.role === "session_meta" || msg.display_kind === "hidden") {
+            return null;
+          }
+
           if (msg.role === "tool") {
             const isOpen = Boolean(expandedTools[msg.id]);
             return (
@@ -167,12 +197,12 @@ export function ChatView(props: ChatViewProps) {
                     setExpandedTools((prev) => ({ ...prev, [msg.id]: !prev[msg.id] }))
                   }
                 >
-                  <span>🔧 Tool Result: {msg.tool_name || "tool"}</span>
+                  <span className="tool-card-title">🔧 Tool Result: {msg.tool_name || "tool"}</span>
                   <span className="tool-card-meta">
                     {formatMessageTime(msg.timestamp)} · {isOpen ? "접기 ▲" : "펼치기 ▼"}
                   </span>
                 </button>
-                {isOpen && <pre className="tool-card-body">{msg.content}</pre>}
+                {isOpen && <pre className="tool-card-body">{formatToolResultForDisplay(msg.content)}</pre>}
               </div>
             );
           }
@@ -188,7 +218,7 @@ export function ChatView(props: ChatViewProps) {
                     setExpandedTools((prev) => ({ ...prev, [msg.id]: !prev[msg.id] }))
                   }
                 >
-                  <span>
+                  <span className="tool-card-title">
                     ⚡ Tool Call: {msg.tool_calls.map((c) => c.name).join(", ")}
                   </span>
                   <span className="tool-card-meta">
@@ -196,20 +226,28 @@ export function ChatView(props: ChatViewProps) {
                   </span>
                 </button>
                 {isOpen && (
-                  <pre className="tool-card-body">
-                    {JSON.stringify(msg.tool_calls, null, 2)}
-                  </pre>
+                  <pre className="tool-card-body">{formatToolCallsForDisplay(msg.tool_calls)}</pre>
                 )}
               </div>
             );
           }
 
+          if (
+            !msg.content &&
+            !msg.reasoning &&
+            msg.tool_calls.length === 0 &&
+            msg.display_kind !== "failed_turn"
+          ) {
+            return null;
+          }
+
           const isUser = msg.role === "user";
+          const isFailed = msg.display_kind === "failed_turn";
           return (
             <div key={msg.id} className={`bubble-row ${isUser ? "bubble-row-user" : "bubble-row-assistant"}`}>
-              <div className={`bubble ${isUser ? "bubble-user" : "bubble-assistant"}`}>
+              <div className={`bubble ${isUser ? "bubble-user" : "bubble-assistant"} ${isFailed ? "bubble-failed" : ""}`}>
                 <div className="bubble-meta">
-                  <span>{isUser ? "You" : "Hermes"}</span>
+                  <span>{isUser ? "You" : isFailed ? "Hermes · 실패" : "Hermes"}</span>
                   <span>{formatMessageTime(msg.timestamp)}</span>
                 </div>
                 {msg.reasoning && (
@@ -218,7 +256,8 @@ export function ChatView(props: ChatViewProps) {
                     <pre className="reasoning-pre">{msg.reasoning}</pre>
                   </details>
                 )}
-                <div className="bubble-content">{renderFormattedText(msg.content)}</div>
+                <div className="bubble-content">{renderFormattedMessage(msg.content)}</div>
+                {msg.error_detail && <div className="bubble-error-note">{msg.error_detail}</div>}
                 {msg.tool_calls.length > 0 && (
                   <div className="inline-tools-note">
                     호출된 도구: {msg.tool_calls.map((t) => t.name).join(", ")}
@@ -229,31 +268,35 @@ export function ChatView(props: ChatViewProps) {
           );
         })}
 
-        {liveStream && (
+        {isStreaming && (
           <div className="bubble-row bubble-row-assistant">
             <div className="bubble bubble-assistant bubble-streaming">
               <div className="bubble-meta">
-                <span>Hermes (응답 생성 중...)</span>
+                <span>Hermes ({streamingLabel}...)</span>
                 <span className="pulse-dot" />
               </div>
-              {liveStream.thinking && <div className="thinking-line">{liveStream.thinking}</div>}
-              {liveStream.tools.length > 0 && (
+              {liveStream?.thinking && <div className="thinking-line">{liveStream.thinking}</div>}
+              {liveStream && liveStream.tools.length > 0 && (
                 <div className="live-tools-strip">
                   {liveStream.tools.map((t, i) => (
-                    <span key={i} className={`live-tool-chip ${t.status}`}>
+                    <span key={i} className={`live-tool-chip ${t.status}`} title={t.detail}>
                       {t.status === "running" ? "⏳" : "✓"} {t.name}
                     </span>
                   ))}
                 </div>
               )}
-              {liveStream.reasoning && (
+              {liveStream?.reasoning && (
                 <details className="reasoning-details" open>
                   <summary>실시간 추론</summary>
                   <pre className="reasoning-pre">{liveStream.reasoning}</pre>
                 </details>
               )}
               <div className="bubble-content">
-                {liveStream.text ? renderFormattedText(liveStream.text) : "생각 중..."}
+                {liveStream?.text
+                  ? renderFormattedMessage(liveStream.text)
+                  : session.live_status === "waiting"
+                    ? "승인 또는 사용자 입력을 기다리고 있습니다..."
+                    : "Hermes가 응답을 생성하고 있습니다..."}
               </div>
             </div>
           </div>

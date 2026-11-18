@@ -27,7 +27,9 @@ import httpx  # noqa: E402
 import uvicorn  # noqa: E402
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
+from starlette.websockets import WebSocketDisconnected, WebSocketState  # noqa: E402
 
 from hermes_cli.config import load_config  # noqa: E402
 from hermes_cli.gateway_client import GatewayClientError, connect_gateway  # noqa: E402
@@ -35,8 +37,10 @@ from hermes_cli.gateway_runtime import discover_gateway_endpoint  # noqa: E402
 from hermes_constants import VALID_REASONING_EFFORTS, get_hermes_home  # noqa: E402
 
 HERMES_HOME = Path(get_hermes_home())
+HERMES_CACHE_DIR = (HERMES_HOME / "cache").resolve()
 HERMES_WORKSPACE = HERMES_HOME / "workspace"
 WINAPP_ROOT = Path(r"C:\Users\cbmplus\source\WinApp")
+MEDIA_ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 CODEX_MODELS_CACHE = Path(os.environ.get("CODEX_HOME", "").strip() or (Path.home() / ".codex")) / "models_cache.json"
 HERMES_API_ORIGIN = "http://127.0.0.1:9120"
 HERMES_TOKEN_PATH = HERMES_HOME / "webapp" / "session-token"
@@ -52,6 +56,26 @@ WORKSPACE_ROOTS: dict[str, Path] = {
 _ws_clients: set[WebSocket] = set()
 _ws_clients_lock = asyncio.Lock()
 _active_turns: dict[str, dict[str, Any]] = {}
+_gateway_live_statuses: dict[str, str] = {}
+_gateway_observer_connected = False
+_gateway_subs_to_detach: set[str] = set()
+_LIVE_BUSY_STATUSES = frozenset({"working", "starting", "waiting"})
+_OBSERVER_LIVE_EVENTS = frozenset(
+    {
+        "message.start",
+        "turn.started",
+        "thinking.delta",
+        "reasoning.delta",
+        "message.delta",
+        "message.interim",
+        "tool.generating",
+        "tool.start",
+        "tool.complete",
+        "agent.step",
+        "status.update",
+    }
+)
+_OBSERVER_TERMINAL_EVENTS = frozenset({"message.complete", "turn.error", "turn.cancelled"})
 
 
 class ModelApplyRequest(BaseModel):
@@ -83,6 +107,23 @@ class McpToolCallRequest(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
+async def _safe_ws_send_json(ws: WebSocket, payload: dict[str, Any]) -> bool:
+    """Send JSON on a WebSocket only while connected; return False if client already closed."""
+    if ws.client_state != WebSocketState.CONNECTED:
+        return False
+    try:
+        await ws.send_json(payload)
+        return True
+    except (WebSocketDisconnect, WebSocketDisconnected, RuntimeError):
+        return False
+
+
+def _is_within_dir(target: Path, base: Path) -> bool:
+    resolved_base = base.resolve()
+    resolved_target = target.resolve(strict=False)
+    return resolved_target == resolved_base or resolved_base in resolved_target.parents
+
+
 async def _ws_broadcast(message: dict[str, Any]) -> None:
     """Broadcast a JSON message to all connected WebSocket clients."""
     async with _ws_clients_lock:
@@ -102,6 +143,143 @@ async def _ws_broadcast(message: dict[str, Any]) -> None:
                 _ws_clients.discard(ws)
 
 
+async def _push_session_messages_update(session_id: str) -> None:
+    messages = await asyncio.to_thread(_load_session_messages_sync, session_id, 300)
+    await _ws_broadcast({"type": "messages_update", "session_id": session_id, "messages": messages})
+
+
+async def _handle_observed_gateway_event(event: Any) -> None:
+    """Forward live Gateway execution events for external turns (e.g. Telegram/TUI)."""
+    if not isinstance(event, dict):
+        return
+    params = event.get("params")
+    if not isinstance(params, dict):
+        return
+    ev_sid = params.get("session_id")
+    if not isinstance(ev_sid, str) or not ev_sid or ev_sid in _active_turns:
+        return
+    kind = str(params.get("type") or "")
+    payload = params.get("payload") if isinstance(params.get("payload"), dict) else {}
+
+    if kind in _OBSERVER_TERMINAL_EVENTS:
+        _gateway_live_statuses[ev_sid] = "idle"
+        await _ws_broadcast(
+            {"type": "chat_event", "session_id": ev_sid, "event_type": kind, "payload": payload}
+        )
+        await _push_session_messages_update(ev_sid)
+        await _broadcast_full_overview()
+        return
+
+    if kind in _OBSERVER_LIVE_EVENTS:
+        was_busy = _gateway_live_statuses.get(ev_sid) in _LIVE_BUSY_STATUSES
+        _gateway_live_statuses[ev_sid] = "working"
+        await _ws_broadcast(
+            {"type": "chat_event", "session_id": ev_sid, "event_type": kind, "payload": payload}
+        )
+        if kind == "message.start" or not was_busy:
+            if kind == "message.start":
+                await asyncio.sleep(0.05)
+                await _push_session_messages_update(ev_sid)
+            await _broadcast_full_overview()
+
+
+async def _gateway_session_observer() -> None:
+    """Stay subscribed to active Gateway sessions (including Telegram) for real-time typing/events."""
+    global _gateway_observer_connected
+    while True:
+        try:
+            discovery = await asyncio.to_thread(discover_gateway_endpoint, HERMES_HOME, timeout=2.0)
+            if discovery.endpoint is None:
+                _gateway_observer_connected = False
+                await asyncio.sleep(2.0)
+                continue
+
+            async with connect_gateway(endpoint=discovery.endpoint) as client:
+                subscribed: dict[str, str] = {}
+                last_busy: dict[str, str] = {}
+                reader_task = asyncio.create_task(_drain_gateway_events(client))
+                try:
+                    while not reader_task.done():
+                        for sid in list(_gateway_subs_to_detach):
+                            _gateway_subs_to_detach.discard(sid)
+                            sub_id = subscribed.pop(sid, None)
+                            if sub_id:
+                                with contextlib.suppress(Exception):
+                                    await client.rpc("session.detach", session_id=sid, subscription_id=sub_id)
+
+                        active_res = await client.rpc("session.active_list", _timeout=3.0)
+                        _gateway_observer_connected = True
+                        sessions = active_res.get("sessions") if isinstance(active_res, dict) else []
+                        next_statuses: dict[str, str] = {}
+                        target_sids: list[str] = []
+                        if isinstance(sessions, list):
+                            for item in sessions:
+                                if not isinstance(item, dict):
+                                    continue
+                                sid = str(item.get("id") or "")
+                                if not sid:
+                                    continue
+                                st = str(item.get("status") or "idle")
+                                next_statuses[sid] = st
+                                target_sids.append(sid)
+
+                        for sid in target_sids:
+                            if sid not in subscribed:
+                                try:
+                                    res = await client.rpc("session.resume", session_id=sid, omit_messages=True)
+                                    sub_id = res.get("subscription_id") if isinstance(res, dict) else None
+                                    if isinstance(sub_id, str) and sub_id:
+                                        subscribed[sid] = sub_id
+                                    if isinstance(res, dict) and res.get("running"):
+                                        next_statuses[sid] = "working"
+                                except Exception:
+                                    pass
+
+                        for sid, st in next_statuses.items():
+                            _gateway_live_statuses[sid] = st
+                        for sid in list(_gateway_live_statuses):
+                            if sid not in next_statuses:
+                                _gateway_live_statuses.pop(sid, None)
+
+                        next_busy = {sid: st for sid, st in next_statuses.items() if st in _LIVE_BUSY_STATUSES}
+                        ended_sids = [sid for sid in last_busy if sid not in next_busy and sid not in _active_turns]
+                        started_sids = [sid for sid in next_busy if sid not in last_busy and sid not in _active_turns]
+                        if started_sids or ended_sids or next_busy != last_busy:
+                            for sid in ended_sids:
+                                await _ws_broadcast(
+                                    {"type": "chat_event", "session_id": sid, "event_type": "message.complete", "payload": {}}
+                                )
+                                await _push_session_messages_update(sid)
+                            for sid in started_sids:
+                                await _push_session_messages_update(sid)
+                            await _broadcast_full_overview()
+                        last_busy = next_busy
+
+                        async with _ws_clients_lock:
+                            has_clients = bool(_ws_clients)
+                        await asyncio.sleep(1.0 if has_clients else 3.0)
+                finally:
+                    reader_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await reader_task
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+        finally:
+            _gateway_observer_connected = False
+            _gateway_live_statuses.clear()
+        await asyncio.sleep(1.5)
+
+
+async def _drain_gateway_events(client) -> None:
+    while True:
+        event = await client.events.get()
+        if isinstance(event, Exception):
+            break
+        await _handle_observed_gateway_event(event)
+
+
 async def _periodic_ws_broadcaster() -> None:
     """Push periodic overview updates every 4s while WebSocket clients are connected."""
     while True:
@@ -119,17 +297,21 @@ async def _periodic_ws_broadcaster() -> None:
 
 @contextlib.asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    task = asyncio.create_task(_periodic_ws_broadcaster())
+    broadcaster_task = asyncio.create_task(_periodic_ws_broadcaster())
+    observer_task = asyncio.create_task(_gateway_session_observer())
     try:
         yield
     finally:
-        task.cancel()
+        observer_task.cancel()
+        broadcaster_task.cancel()
         for entry in list(_active_turns.values()):
             turn_task = entry.get("task")
             if turn_task and not turn_task.done():
                 turn_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await task
+            await observer_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await broadcaster_task
 
 
 app = FastAPI(title="Hermes Studio Manager API", version="2.0.0", lifespan=_lifespan)
@@ -288,6 +470,23 @@ def _load_sessions_snapshot(limit: int = 30) -> list[dict[str, Any]]:
         routing_rows = conn.execute("SELECT session_key, entry_json FROM gateway_routing").fetchall()
         routing_map = {r["session_key"]: _parse_json_dict(r["entry_json"]) for r in routing_rows}
 
+        admission_status: dict[str, str] = {}
+        try:
+            adm_rows = conn.execute(
+                """
+                SELECT target_session_id, status
+                FROM session_admissions
+                WHERE status IN ('queued', 'started', 'unknown')
+                """
+            ).fetchall()
+            for ar in adm_rows:
+                tsid = ar["target_session_id"]
+                st = ar["status"]
+                if tsid not in admission_status or st == "started":
+                    admission_status[tsid] = "working" if st == "started" else "starting"
+        except sqlite3.Error:
+            pass
+
         rows = conn.execute(
             """
             SELECT id, source, session_key, display_name, title, model, model_config,
@@ -317,6 +516,12 @@ def _load_sessions_snapshot(limit: int = 30) -> list[dict[str, Any]]:
                 or ""
             )
             sid = r["id"]
+            live_status = (
+                "working"
+                if sid in _active_turns
+                else (_gateway_live_statuses.get(sid) if _gateway_observer_connected else admission_status.get(sid))
+            )
+            is_streaming = bool(sid in _active_turns or live_status in _LIVE_BUSY_STATUSES)
             sessions.append(
                 {
                     "id": sid,
@@ -332,7 +537,8 @@ def _load_sessions_snapshot(limit: int = 30) -> list[dict[str, Any]]:
                     "started_at": r["started_at"],
                     "ended_at": r["ended_at"],
                     "is_active": r["ended_at"] is None,
-                    "is_streaming": sid in _active_turns,
+                    "is_streaming": is_streaming,
+                    "live_status": live_status or "idle",
                     "last_activity_at": r["last_activity_at"],
                     "message_count": r["message_count"] or 0,
                     "api_call_count": r["api_call_count"] or 0,
@@ -350,14 +556,16 @@ def _load_sessions_snapshot(limit: int = 30) -> list[dict[str, Any]]:
     return _query_db(_read) or []
 
 
-def _load_session_messages_sync(session_id: str, limit: int = 80) -> list[dict[str, Any]]:
+def _load_session_messages_sync(session_id: str, limit: int = 300) -> list[dict[str, Any]]:
     def _read(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT id, role, content, tool_name, tool_calls, tool_call_id,
-                   reasoning, reasoning_content, display_kind, timestamp
+                   reasoning, reasoning_content, display_kind, display_metadata, timestamp
             FROM messages
             WHERE session_id = ?
+              AND COALESCE(role, '') != 'session_meta'
+              AND COALESCE(display_kind, '') != 'hidden'
             ORDER BY id DESC
             LIMIT ?
             """,
@@ -378,6 +586,9 @@ def _load_session_messages_sync(session_id: str, limit: int = 80) -> list[dict[s
                         "arguments": fn.get("arguments") or tc.get("arguments") or "",
                     }
                 )
+            display_kind = r["display_kind"]
+            meta = _parse_json_dict(r["display_metadata"]) if display_kind == "failed_turn" else {}
+            error_detail = str(meta.get("error") or "") or None if display_kind == "failed_turn" else None
             items.append(
                 {
                     "id": r["id"],
@@ -387,7 +598,8 @@ def _load_session_messages_sync(session_id: str, limit: int = 80) -> list[dict[s
                     "tool_calls": parsed_calls,
                     "tool_call_id": r["tool_call_id"],
                     "reasoning": r["reasoning"] or r["reasoning_content"] or "",
-                    "display_kind": r["display_kind"],
+                    "display_kind": display_kind,
+                    "error_detail": error_detail,
                     "timestamp": r["timestamp"],
                 }
             )
@@ -508,7 +720,7 @@ async def _run_streaming_turn(session_id: str, text: str) -> None:
         )
     finally:
         _active_turns.pop(session_id, None)
-        messages = await asyncio.to_thread(_load_session_messages_sync, session_id, 80)
+        messages = await asyncio.to_thread(_load_session_messages_sync, session_id, 300)
         await _ws_broadcast({"type": "messages_update", "session_id": session_id, "messages": messages})
         await _broadcast_full_overview()
 
@@ -680,7 +892,7 @@ async def create_new_session(body: CreateSessionRequest):
 
 
 @app.get("/api/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str, limit: int = 80):
+async def get_session_messages(session_id: str, limit: int = 300):
     messages = await asyncio.to_thread(_load_session_messages_sync, session_id, limit)
     return {"session_id": session_id, "messages": messages}
 
@@ -743,6 +955,7 @@ async def delete_session(session_id: str):
     if row["runtime_generation"] is not None:
         params["expected_generation"] = row["runtime_generation"]
 
+    _gateway_subs_to_detach.add(session_id)
     res = await _hermes_request("DELETE", f"/api/sessions/{session_id}", params=params)
     await _broadcast_full_overview()
     return {"ok": True, "session_id": session_id, "result": res}
@@ -788,7 +1001,7 @@ async def list_workspace_files(root: str = "winapp", subpath: str = ""):
     if base is None:
         raise HTTPException(status_code=400, detail=f"Unknown workspace root '{root}'")
     target = (base / subpath).resolve() if subpath else base
-    if target != base and base not in target.parents:
+    if not _is_within_dir(target, base):
         raise HTTPException(status_code=403, detail="Path outside allowed workspace root")
     if not target.exists() or not target.is_dir():
         raise HTTPException(status_code=404, detail="Directory not found")
@@ -829,7 +1042,7 @@ async def read_workspace_file(root: str = "winapp", path: str = ""):
     if base is None:
         raise HTTPException(status_code=400, detail=f"Unknown workspace root '{root}'")
     target = (base / path).resolve()
-    if target != base and base not in target.parents:
+    if not _is_within_dir(target, base):
         raise HTTPException(status_code=403, detail="Path outside allowed workspace root")
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
@@ -848,6 +1061,23 @@ async def read_workspace_file(root: str = "winapp", path: str = ""):
         "truncated": truncated,
         "content": content,
     }
+
+
+@app.get("/api/media")
+async def read_media_file(path: str):
+    """Serve cached Hermes attachment/workspace images safely without arbitrary host reads."""
+    raw_path = path.strip()
+    if not raw_path:
+        raise HTTPException(status_code=400, detail="Missing media path")
+    target = Path(raw_path).resolve(strict=False)
+    allowed_bases = (HERMES_CACHE_DIR, WORKSPACE_ROOTS["hermes"])
+    if not any(_is_within_dir(target, base) for base in allowed_bases):
+        raise HTTPException(status_code=403, detail="Media path outside allowed Hermes cache/workspace")
+    if target.suffix.lower() not in MEDIA_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=403, detail="Unsupported media extension")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Media file not found")
+    return FileResponse(target)
 
 
 @app.get("/api/mcp")
@@ -1012,7 +1242,7 @@ async def _handle_ws_action(action: str, payload: dict[str, Any]) -> Any:
         return await delete_session(session_id)
     if action == "get_messages":
         session_id = str(payload.get("session_id") or "")
-        limit = int(payload.get("limit") or 80)
+        limit = int(payload.get("limit") or 300)
         return await get_session_messages(session_id, limit=limit)
     if action == "register_node_mcp":
         return await register_node_mcp()
@@ -1034,16 +1264,23 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         try:
             snapshot = await _build_full_snapshot(refresh_models=False)
-            await ws.send_json({"type": "snapshot", **snapshot})
+            if not await _safe_ws_send_json(ws, {"type": "snapshot", **snapshot}):
+                return
+        except WebSocketDisconnect:
+            return
         except Exception as exc:
-            await ws.send_json({"type": "error", "error": str(exc)})
+            if not await _safe_ws_send_json(ws, {"type": "error", "error": str(exc)}):
+                return
 
         while True:
             raw = await ws.receive_text()
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
-                await ws.send_json({"type": "response", "req_id": None, "ok": False, "error": "Invalid JSON"})
+                if not await _safe_ws_send_json(
+                    ws, {"type": "response", "req_id": None, "ok": False, "error": "Invalid JSON"}
+                ):
+                    break
                 continue
 
             req_id = msg.get("req_id")
@@ -1051,11 +1288,19 @@ async def websocket_endpoint(ws: WebSocket):
             payload = msg.get("payload") if isinstance(msg.get("payload"), dict) else {}
             try:
                 data = await _handle_ws_action(action, payload)
-                await ws.send_json({"type": "response", "req_id": req_id, "ok": True, "data": data})
+                sent = await _safe_ws_send_json(ws, {"type": "response", "req_id": req_id, "ok": True, "data": data})
             except HTTPException as exc:
-                await ws.send_json({"type": "response", "req_id": req_id, "ok": False, "error": exc.detail})
+                sent = await _safe_ws_send_json(
+                    ws, {"type": "response", "req_id": req_id, "ok": False, "error": exc.detail}
+                )
+            except WebSocketDisconnect:
+                break
             except Exception as exc:
-                await ws.send_json({"type": "response", "req_id": req_id, "ok": False, "error": str(exc)})
+                sent = await _safe_ws_send_json(
+                    ws, {"type": "response", "req_id": req_id, "ok": False, "error": str(exc)}
+                )
+            if not sent:
+                break
     except WebSocketDisconnect:
         pass
     finally:

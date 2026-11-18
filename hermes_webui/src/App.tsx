@@ -163,11 +163,21 @@ export default function App() {
                 text: "",
                 tools: [],
               };
-              if (kind === "turn.started") {
-                return { ...prev, [sid]: { thinking: "응답 시작...", reasoning: "", text: "", tools: [] } };
+              if (kind === "turn.started" || kind === "message.start") {
+                if (prev[sid]) {
+                  return prev;
+                }
+                return { ...prev, [sid]: { thinking: "응답 준비 중...", reasoning: "", text: "", tools: [] } };
               }
               if (kind === "thinking.delta") {
                 return { ...prev, [sid]: { ...current, thinking: String(payload.text || "") } };
+              }
+              if (kind === "agent.step") {
+                const step = payload.iteration ? ` (step ${String(payload.iteration)})` : "";
+                return { ...prev, [sid]: { ...current, thinking: `에이전트 추론 진행 중...${step}` } };
+              }
+              if (kind === "status.update") {
+                return { ...prev, [sid]: { ...current, thinking: String(payload.text || "처리 중...") } };
               }
               if (kind === "reasoning.delta") {
                 return {
@@ -196,17 +206,27 @@ export default function App() {
                 return { ...prev, [sid]: { ...current, thinking: `도구 준비 중: ${String(payload.name || "")}` } };
               }
               if (kind === "tool.start") {
-                const toolName = String(payload.name || "tool");
+                const toolName = String(payload.name || payload.tool_name || "tool");
+                const detail = String(payload.context || "");
                 return {
                   ...prev,
-                  [sid]: { ...current, tools: [...current.tools, { name: toolName, status: "running" }] },
+                  [sid]: {
+                    ...current,
+                    thinking: `도구 실행 중: ${toolName}`,
+                    tools: [...current.tools, { name: toolName, status: "running", detail: detail || undefined }],
+                  },
                 };
               }
               if (kind === "tool.complete") {
-                const toolName = String(payload.name || "tool");
-                const tools = current.tools.map((t) =>
-                  t.name === toolName && t.status === "running" ? { ...t, status: "done" as const } : t
-                );
+                const toolName = String(payload.name || payload.tool_name || "tool");
+                let flipped = false;
+                const tools = current.tools.map((t) => {
+                  if (!flipped && t.name === toolName && t.status === "running") {
+                    flipped = true;
+                    return { ...t, status: "done" as const };
+                  }
+                  return t;
+                });
                 return { ...prev, [sid]: { ...current, tools } };
               }
               if (kind === "turn.error") {
@@ -215,7 +235,7 @@ export default function App() {
                 delete next[sid];
                 return next;
               }
-              if (kind === "message.complete") {
+              if (kind === "message.complete" || kind === "turn.cancelled") {
                 const next = { ...prev };
                 delete next[sid];
                 return next;
@@ -293,16 +313,21 @@ export default function App() {
     []
   );
 
+  const activeSession: SessionItem | null = useMemo(() => {
+    if (!overview?.sessions.length) return null;
+    return overview.sessions.find((s) => s.id === activeSessionId) ?? overview.sessions[0] ?? null;
+  }, [overview, activeSessionId]);
+
   useEffect(() => {
     if (!activeSessionId) return;
-    sendAction<{ messages: MessageItem[] }>("get_messages", { session_id: activeSessionId, limit: 80 }, () =>
-      apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId)}/messages?limit=80`)
+    sendAction<{ messages: MessageItem[] }>("get_messages", { session_id: activeSessionId, limit: 300 }, () =>
+      apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId)}/messages?limit=300`)
     )
       .then((res) => {
         setMessagesBySession((prev) => ({ ...prev, [activeSessionId]: res.messages }));
       })
       .catch(() => {});
-  }, [activeSessionId, sendAction]);
+  }, [activeSessionId, activeSession?.message_count, activeSession?.last_activity_at, sendAction]);
 
   useEffect(() => {
     if (inspectorTab === "files" && quickFiles.length === 0) {
@@ -311,11 +336,6 @@ export default function App() {
         .catch(() => {});
     }
   }, [inspectorTab, quickFiles.length]);
-
-  const activeSession: SessionItem | null = useMemo(() => {
-    if (!overview?.sessions.length) return null;
-    return overview.sessions.find((s) => s.id === activeSessionId) ?? overview.sessions[0] ?? null;
-  }, [overview, activeSessionId]);
 
   useEffect(() => {
     if (!activeSession) return;
@@ -697,6 +717,7 @@ export default function App() {
                       {sess.source === "telegram" ? "TG" : sess.source.toUpperCase()}
                     </span>
                     <span className="session-row-title">{sess.title || sess.display_name || sess.id}</span>
+                    {sess.is_streaming && <span className="streaming-pill">응답중</span>}
                     {sess.source !== "telegram" && (
                       <button
                         type="button"

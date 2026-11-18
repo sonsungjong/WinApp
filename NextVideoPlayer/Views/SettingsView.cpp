@@ -88,7 +88,7 @@ namespace
         L"NextVideoPlayer WebSocket API 가이드\r\n"
         L"========================================\r\n\r\n"
         L"1. 바로 사용하기\r\n"
-        L"- [API] 탭에서 토글을 켜고 [저장]을 누르거나 [켜고 제어화면 열기]를 클릭합니다.\r\n"
+        L"- [API] 탭에서 토글을 켜고 [저장]을 누르거나 [켜고 테스트창 열기]를 클릭합니다.\r\n"
         L"- 기본 WebSocket 주소: ws://127.0.0.1:49152/api/v1\r\n"
         L"- 기본 웹 제어화면: http://127.0.0.1:49152/\r\n"
         L"- 다른 PC에서 접속하려면 수신 IP를 해당 PC IP(또는 0.0.0.0)로 바꾸고 방화벽 포트를 허용하세요.\r\n\r\n"
@@ -984,7 +984,7 @@ void SettingsView::BuildActiveTabLayout(
 
             outCards.push_back({ D2D1::RectF(344.0f, 112.0f, 600.0f, 248.0f), L"빠른 연결 및 제어" });
             outLabels.push_back({ D2D1::RectF(358.0f, 150.0f, 586.0f, 174.0f), statusText, false });
-            outControls.push_back({ kIdApiPage, D2D1::RectF(358.0f, 178.0f, 586.0f, 206.0f), L"켜고 제어화면 열기", ControlKind::Button, false, false, true });
+            outControls.push_back({ kIdApiPage, D2D1::RectF(358.0f, 178.0f, 586.0f, 206.0f), L"켜고 테스트창 열기", ControlKind::Button, false, false, true });
             outControls.push_back({ kIdApiCopy, D2D1::RectF(358.0f, 212.0f, 586.0f, 240.0f), L"WebSocket 주소 복사" });
 
             outCards.push_back({ D2D1::RectF(20.0f, 258.0f, 600.0f, 412.0f), L"API 빠른 가이드 (스크롤 가능)", L"v1 JSON" });

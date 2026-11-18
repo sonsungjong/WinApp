@@ -51,8 +51,13 @@ if (-not $SkipBuild) {
     $BinaryDirectory = Join-Path $run 'bin'
     $objectDirectory = Join-Path $run 'obj'
     Invoke-PackageTool $tools.MSBuild @((Join-Path $projectRoot 'NextVideoPlayer.vcxproj'),'/t:Build',
-        '/p:Configuration=Release','/p:Platform=x64',"/p:OutDir=$BinaryDirectory\", "/p:IntDir=$objectDirectory\",'/m','/v:minimal','/nologo')
+        '/p:Configuration=Release','/p:Platform=x64',"/p:OutDir=$BinaryDirectory\", "/p:IntDir=$objectDirectory\",'/p:SkipPackagePostBuild=true','/m','/v:minimal','/nologo')
+    $builtExe = Join-Path $BinaryDirectory 'NextVideoPlayer.exe'
+    if (Test-Path -LiteralPath $builtExe) {
+        Copy-Item -LiteralPath $builtExe -Destination (Join-Path $projectRoot 'NextVideoPlayer.exe') -Force
+    }
 } elseif (-not $BinaryDirectory) { $BinaryDirectory = $projectRoot }
+$BinaryDirectory = [IO.Path]::GetFullPath($BinaryDirectory)
 $exe = Join-Path $BinaryDirectory 'NextVideoPlayer.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Missing release executable: $exe" }
 if ([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion -ne $version.ToString()) {
@@ -149,6 +154,7 @@ if ($Target -in 'All','MSI') {
     Invoke-PackageSigning $msiPath $CertificateThumbprint $TimestampUrl $tools
     $destination = Join-Path $OutputDirectory "$filePrefix.msi"
     Copy-Item -LiteralPath $msiPath -Destination $destination -Force
+    Copy-Item -LiteralPath $msiPath -Destination (Join-Path $projectRoot "$filePrefix.msi") -Force
     $createdPackages += $destination
 }
 if ($Target -in 'All','MSIX') {

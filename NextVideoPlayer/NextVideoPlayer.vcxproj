@@ -186,7 +186,8 @@
       <AdditionalLibraryDirectories>$(ProjectDir)ThirdParty\libmpv;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"</Command>
+      <Command>xcopy /Y /D "$(ProjectDir)ThirdParty\libmpv\libmpv-2.dll" "$(OutDir)"
+if /I not "$(SkipPackagePostBuild)"=="true" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)Packaging\Build-Packages.ps1" -Target All -ForStore -SkipBuild -BinaryDirectory "$(OutDir)."</Command>
     </PostBuildEvent>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>

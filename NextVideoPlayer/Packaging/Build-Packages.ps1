@@ -154,7 +154,6 @@ if ($Target -in 'All','MSI') {
     Invoke-PackageSigning $msiPath $CertificateThumbprint $TimestampUrl $tools
     $destination = Join-Path $OutputDirectory "$filePrefix.msi"
     Copy-Item -LiteralPath $msiPath -Destination $destination -Force
-    Copy-Item -LiteralPath $msiPath -Destination (Join-Path $projectRoot "$filePrefix.msi") -Force
     $createdPackages += $destination
 }
 if ($Target -in 'All','MSIX') {

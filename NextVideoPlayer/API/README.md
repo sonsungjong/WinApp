@@ -85,25 +85,18 @@ UTF-8 JSON 텍스트를 보냅니다. 메시지 종류는 `"type":"all"` 하나�
 
 ## 외부 프로그램에서 테스트
 
-추가 모듈 없이 PowerShell 7에서 동봉한 스크립트를 실행할 수 있습니다.
+추가 모듈 없이 Windows PowerShell(또는 PowerShell 7)에서 동봉한 스크립트를 실행할 수 있습니다.
 
 ```powershell
-pwsh -File .\API\Send-PlayerCommand.ps1
-pwsh -File .\API\Send-PlayerCommand.ps1 -Message '{"type":"all","playback":"paused"}'
-pwsh -File .\API\Send-PlayerCommand.ps1 -Endpoint ws://127.0.0.1:49153/api/v1 -Message '{"type":"all","speed":2.0}'
+powershell -ExecutionPolicy Bypass -File .\API\Send-PlayerCommand.ps1
+powershell -ExecutionPolicy Bypass -File .\API\Send-PlayerCommand.ps1 -Message '{"type":"all","playback":"paused"}'
+powershell -ExecutionPolicy Bypass -File .\API\Send-PlayerCommand.ps1 -Endpoint ws://127.0.0.1:49153/api/v1 -Message '{"type":"all","speed":2.0}'
 ```
 
 연결은 최대 8개, 메시지는 1MiB까지 지원합니다. 처리 대기열과 예약 대기열은 크기가 제한되어 있습니다. 과도한 요청은 `busy` 오류를 응답하거나 연결이 종료됩니다.
 
-## 개발과 검증
+## 개발 참고
 
-Visual Studio 2026 C++ 데스크톱 도구, CMake 및 PowerShell 7이 필요합니다. 프로젝트를 빌드하면 `setup_websocket.ps1`이 고정된 소스 아카이브의 SHA256을 검증하고 libwebsockets를 정적 라이브러리로 빌드합니다. 의존성 소스와 빌드 결과는 `artifacts/`에 캐시합니다. 원본과 라이선스는 `ThirdParty/libwebsockets` 안내를 참고하세요.
+Visual Studio C++ 데스크톱 도구와 CMake가 필요합니다. 프로젝트를 빌드하면 `setup_websocket.ps1`이 고정된 소스 아카이브의 SHA256을 검증하고 libwebsockets를 정적 라이브러리로 빌드합니다. 의존성 소스와 빌드 결과는 `artifacts/`에 캐시합니다. 원본과 라이선스는 `ThirdParty/libwebsockets` 안내를 참고하세요.
 
 `App`이 `PlayerControlService`, `UiDispatcher`, `ApiService`를 소유합니다. 네트워크 스레드는 메시지를 파싱하고 제한된 큐에 전달합니다. 모델 변경과 상태 조회는 UI 스레드에서 실행합니다. `ApiServer`는 수신·송신과 연결 수명만 관리합니다.
-
-실행 테스트는 아래 명령으로 수행합니다. 테스트 창은 비활성 Windows 데스크톱에 생성하며 현재 사용자 설정을 변경하지 않습니다.
-
-```powershell
-python .\Tests\api_integration.py
-python .\Tests\api_integration.py --stress-seconds 60
-```

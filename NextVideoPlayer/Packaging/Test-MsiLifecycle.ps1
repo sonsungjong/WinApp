@@ -86,7 +86,29 @@ try {
             Execute-Sql $database $insertUpgrade @($upgradeCode,$productVersion,$null,$null,258,$null,'NEWERPRODUCTS')
             Execute-Sql $database ('UPDATE `Directory` SET `DefaultDir`=''NVPTEST|NVP Packaging Validation '+$testId+''' WHERE `Directory`=''AppMenuFolder''')
             Execute-Sql $database ('UPDATE `Directory` SET `DefaultDir`=''NVPTEST|NVP Packaging Validation '+$testId+''' WHERE `Directory`=''INSTALLFOLDER''')
-            Execute-Sql $database ('UPDATE `Registry` SET `Key`=''Software\NextVideoPlayer\PackagingValidation\'+$testId+'''')
+            $regRows = @()
+            $regView = Invoke-Com $database 'OpenView' @('SELECT `Registry`,`Key` FROM `Registry`')
+            try {
+                $null = Invoke-Com $regView 'Execute'
+                while ($regRec = Invoke-Com $regView 'Fetch') {
+                    try {
+                        $regRows += @{
+                            Id  = Get-Com $regRec 'StringData' @(1)
+                            Key = Get-Com $regRec 'StringData' @(2)
+                        }
+                    } finally { Release-Com $regRec }
+                }
+            } finally { $null = Invoke-Com $regView 'Close'; Release-Com $regView }
+            foreach ($rr in $regRows) {
+                $newKey = if ($rr.Key -eq 'Software\NextVideoPlayer\Installer') {
+                    "Software\NextVideoPlayer\PackagingValidation\$testId"
+                } elseif ($rr.Key -eq 'Software\NextVideoPlayer\Installer\Components') {
+                    "Software\NextVideoPlayer\PackagingValidation\$testId\Components"
+                } else {
+                    "Software\NextVideoPlayer\PackagingValidation\$testId\$($rr.Key)"
+                }
+                Execute-Sql $database 'UPDATE `Registry` SET `Key`=? WHERE `Registry`=?' @($newKey, $rr.Id)
+            }
             Execute-Sql $database ('UPDATE `RegLocator` SET `Key`=''Software\NextVideoPlayer\PackagingValidation\'+$testId+''' WHERE `Signature_`<>''WindowsBuild'' AND `Signature_`<>''MachineProgramFiles''')
             Execute-Sql $database ('UPDATE `Shortcut` SET `Name`=''NVPTEST|'+$shortcutName+'''')
             $view = Invoke-Com $database 'OpenView' @('SELECT `Component` FROM `Component`')
@@ -133,9 +155,16 @@ try {
             }
         } finally { Release-Com $shell }
         $registryRoot = if ($Scope -eq 'Machine') { 'HKLM:' } else { 'HKCU:' }
-        $installedPath = (Get-ItemProperty -LiteralPath "$registryRoot\Software\NextVideoPlayer\PackagingValidation\$testId").InstallDirectory
+        $validationBase = "$registryRoot\Software\NextVideoPlayer\PackagingValidation\$testId"
+        $installedPath = (Get-ItemProperty -LiteralPath $validationBase).InstallDirectory
         if ($installedPath.TrimEnd('\') -ne $installDirectory.TrimEnd('\')) { throw 'Installation directory was not persisted in the selected registry hive.' }
-        Write-Host "PASS: isolated $Scope MSI $productVersion, desktop=$DesktopShortcut, shortcuts, registration, custom-directory persistence and installed file hashes."
+        $openWithProps = Get-ItemProperty -LiteralPath "$validationBase\Software\Classes\.mp4\OpenWithProgids"
+        if ($null -eq $openWithProps.PSObject.Properties['NextVideoPlayer.Video']) { throw 'Validation MSI did not register .mp4 OpenWithProgids value.' }
+        $supportedProps = Get-ItemProperty -LiteralPath "$validationBase\Software\Classes\Applications\NextVideoPlayer.exe\SupportedTypes"
+        if ($null -eq $supportedProps.PSObject.Properties['.mp4']) { throw 'Validation MSI did not register .mp4 SupportedTypes value.' }
+        $regAppProps = Get-ItemProperty -LiteralPath "$validationBase\Software\RegisteredApplications"
+        if ($regAppProps.NextVideoPlayer -ne 'Software\NextVideoPlayer\Capabilities') { throw 'Validation MSI did not register RegisteredApplications capability path.' }
+        Write-Host "PASS: isolated $Scope MSI $productVersion, desktop=$DesktopShortcut, shortcuts, file associations, registration, custom-directory persistence and installed file hashes."
     }
 } finally {
     foreach ($product in $products) {

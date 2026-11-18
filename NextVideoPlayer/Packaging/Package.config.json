@@ -7,6 +7,17 @@
   "Publisher": "CN=2F982184-7E58-4E48-8591-3878B830CF0B",
   "PublisherDisplayName": "SUNGJONG",
   "MinWindowsVersion": "10.0.19041.0",
+  "SupportedFileTypes": [
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".wmv",
+    ".mov",
+    ".webm",
+    ".flv",
+    ".ts",
+    ".m4v"
+  ],
   "VulkanRuntime": {
     "Version": "1.4.357.0",
     "Url": "https://sdk.lunarg.com/sdk/download/1.4.357.0/windows/VulkanRT-X64-1.4.357.0-Components.zip",

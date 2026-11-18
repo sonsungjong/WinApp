@@ -16,8 +16,9 @@ function Get-RelativePath {
     $targetFull = [IO.Path]::GetFullPath($TargetPath)
     $targetTrimmed = $targetFull.TrimEnd('\', '/')
     if ($baseFull.Equals($targetTrimmed, [StringComparison]::OrdinalIgnoreCase)) { return '.' }
-    $baseParts = @($baseFull.Split(@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)))
-    $targetParts = @($targetFull.Split(@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)))
+    $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $baseParts = @($baseFull.Split($separators))
+    $targetParts = @($targetFull.Split($separators))
     if (-not $baseParts[0].Equals($targetParts[0], [StringComparison]::OrdinalIgnoreCase)) {
         return $targetFull
     }

@@ -21,6 +21,7 @@ public:
     bool PlayNext();
     bool PlayPrevious();
     void Toggle();
+    void SyncOwnerZOrder() { m_view.SyncOwnerZOrder(); }
     bool IsVisible() const { return m_view.IsVisible(); }
     void Refresh();
     void SetOnChanged(std::function<void()> handler) { m_onChanged = std::move(handler); }

@@ -91,7 +91,9 @@ bool VideoPlayerView::Initialize(HINSTANCE hInstance, HWND parentHwnd)
     ImmAssociateContext(m_hWnd, nullptr);
     m_lastMouseActiveTick = GetTickCount64();
 
-    const int videoH = (std::max)(0, clientH - kControlBarHeight);
+    const UINT dpi = FontHelper::GetWindowDpi(m_hWnd);
+    const int barHeight = FontHelper::ScaleDipToPx(kControlBarHeight, dpi);
+    const int videoH = (std::max)(0, clientH - barHeight);
     m_videoHwnd = CreateWindowExW(
         0,
         kVideoHostClassName,
@@ -114,7 +116,7 @@ bool VideoPlayerView::Initialize(HINSTANCE hInstance, HWND parentHwnd)
     ImmAssociateContext(m_videoHwnd, nullptr);
     EnableWindow(m_videoHwnd, FALSE);
 
-    if (!m_controlBarView.Initialize(hInstance, m_hWnd, 0, videoH, clientW, kControlBarHeight))
+    if (!m_controlBarView.Initialize(hInstance, m_hWnd, 0, videoH, clientW, barHeight))
     {
         return false;
     }
@@ -303,9 +305,10 @@ void VideoPlayerView::UpdateFullscreenAutoHide()
     MONITORINFO mi{ sizeof(MONITORINFO) };
     GetMonitorInfoW(hMonitor, &mi);
 
+    const int barHeight = FontHelper::ScaleDipToPx(kControlBarHeight, FontHelper::GetWindowDpi(m_hWnd));
     const bool inMonitor = (cursorPt.x >= mi.rcMonitor.left && cursorPt.x < mi.rcMonitor.right &&
                             cursorPt.y >= mi.rcMonitor.top && cursorPt.y < mi.rcMonitor.bottom);
-    const bool inToolbarZone = inMonitor && (cursorPt.y >= mi.rcMonitor.bottom - kControlBarHeight);
+    const bool inToolbarZone = inMonitor && (cursorPt.y >= mi.rcMonitor.bottom - barHeight);
 
     if (inToolbarZone || m_controlBarView.IsDragging())
     {
@@ -316,7 +319,7 @@ void VideoPlayerView::UpdateFullscreenAutoHide()
             GetClientRect(m_hWnd, &rc);
             const int w = rc.right - rc.left;
             const int h = rc.bottom - rc.top;
-            m_controlBarView.SetBounds(0, h - kControlBarHeight, w, kControlBarHeight, true);
+            m_controlBarView.SetBounds(0, h - barHeight, w, barHeight, true);
             if (HWND barHwnd = m_controlBarView.GetHwnd())
             {
                 RedrawWindow(barHwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
@@ -413,6 +416,8 @@ void VideoPlayerView::RenderMainPaint(HDC hdc)
         return;
     }
 
+    const float dpi = static_cast<float>(FontHelper::GetWindowDpi(m_hWnd));
+    m_renderTarget->SetDpi(dpi, dpi);
     m_renderTarget->BeginDraw();
     D2D1_SIZE_F size = m_renderTarget->GetSize();
     if (!m_isVideoVisible)
@@ -546,6 +551,7 @@ HRESULT VideoPlayerView::CreateDeviceResources()
         DiscardDeviceResources();
         return hr;
     }
+    m_renderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
 
     if (FAILED(hr = m_renderTarget->CreateSolidColorBrush(
             D2D1::ColorF(0.08f, 0.08f, 0.10f), m_mainBgBrush.GetAddressOf())) ||
@@ -577,9 +583,11 @@ void VideoPlayerView::UpdateLayout()
     const int w = rc.right - rc.left;
     const int h = rc.bottom - rc.top;
 
+    const int barHeight = FontHelper::ScaleDipToPx(kControlBarHeight, FontHelper::GetWindowDpi(m_hWnd));
+
     if (m_isFullscreen)
     {
-        m_controlBarView.SetBounds(0, h - kControlBarHeight, w, kControlBarHeight, m_controlBarView.IsVisible());
+        m_controlBarView.SetBounds(0, h - barHeight, w, barHeight, m_controlBarView.IsVisible());
         if (m_videoHwnd)
         {
             SetWindowPos(m_videoHwnd, HWND_BOTTOM, 0, 0, w, h, SWP_NOACTIVATE);
@@ -587,8 +595,8 @@ void VideoPlayerView::UpdateLayout()
     }
     else
     {
-        const int videoH = (std::max)(0, h - kControlBarHeight);
-        m_controlBarView.SetBounds(0, videoH, w, kControlBarHeight, true);
+        const int videoH = (std::max)(0, h - barHeight);
+        m_controlBarView.SetBounds(0, videoH, w, barHeight, true);
         if (m_videoHwnd)
         {
             SetWindowPos(m_videoHwnd, HWND_BOTTOM, 0, 0, w, videoH, SWP_NOACTIVATE);
@@ -772,6 +780,9 @@ void VideoPlayerView::HandleKeyDown(WPARAM key)
     case VK_OEM_4: if (m_onABLoopAction) m_onABLoopAction(1); break;
     case VK_OEM_6: if (m_onABLoopAction) m_onABLoopAction(2); break;
     case VK_OEM_5: if (m_onABLoopAction) m_onABLoopAction(0); break;
+    case VK_F3: if (m_onPlaylistRequested) m_onPlaylistRequested(); break;
+    case VK_F11: if (m_onFullscreenToggleRequested) m_onFullscreenToggleRequested(); break;
+    case 'S': if (m_onSubtitleToggle) m_onSubtitleToggle(); break;
     default: break;
     }
 }

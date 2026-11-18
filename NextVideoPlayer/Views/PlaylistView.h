@@ -18,6 +18,7 @@ public:
     bool Initialize(HINSTANCE instance, HWND owner) override;
     bool IsVisible() const override;
     void SetVisible(bool visible) override;
+    void SyncOwnerZOrder() override;
     void Render(const std::vector<std::wstring>& items, int currentIndex) override;
     std::vector<std::wstring> PromptOpenFiles() override;
 
@@ -30,6 +31,7 @@ public:
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void EnsureOnOwnerMonitor();
 
     HRESULT CreateDeviceIndependentResources();
     HRESULT CreateDeviceResources();
@@ -84,6 +86,10 @@ private:
     float m_dragStartY = 0.0f;
     float m_dragStartScrollOffset = 0.0f;
     bool m_isHoveringScrollThumb = false;
+    int m_resizeEdge = 0;
+    POINT m_resizeStartPt{};
+    RECT m_resizeStartRect{};
+    bool m_hasShownOnce = false;
 
     std::unordered_map<std::wstring, Microsoft::WRL::ComPtr<ID2D1Bitmap>> m_thumbnailCache;
 

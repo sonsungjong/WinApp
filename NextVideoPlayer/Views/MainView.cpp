@@ -1,4 +1,5 @@
 #include "Views/MainView.h"
+#include "Views/FontHelper.h"
 #include "Resource.h"
 #include <dwmapi.h>
 #include <imm.h>
@@ -41,6 +42,7 @@ bool MainView::Initialize(HINSTANCE hInstance)
     m_windowClass = classBuffer;
     RegisterWindowClass(hInstance);
 
+    const UINT dpi = FontHelper::GetWindowDpi(nullptr);
     m_hWnd = CreateWindowExW(
         WS_EX_ACCEPTFILES,
         m_windowClass.c_str(),
@@ -48,8 +50,8 @@ bool MainView::Initialize(HINSTANCE hInstance)
         kWindowedStyle & ~WS_VISIBLE,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        kDefaultWidth,
-        kDefaultHeight,
+        FontHelper::ScaleDipToPx(kDefaultWidth, dpi),
+        FontHelper::ScaleDipToPx(kDefaultHeight, dpi),
         nullptr,
         nullptr,
         hInstance,
@@ -169,7 +171,7 @@ void MainView::ToggleFullscreen()
         SetWindowLongPtrW(
             m_hWnd,
             GWL_EXSTYLE,
-            (m_savedExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE)) | WS_EX_TOPMOST);
+            m_savedExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_TOPMOST));
 
         SetWindowPos(
             m_hWnd,
@@ -178,7 +180,7 @@ void MainView::ToggleFullscreen()
             mi.rcMonitor.top,
             screenW,
             screenH,
-            SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
         if (m_taskbarList)
         {
@@ -216,13 +218,13 @@ void MainView::ExitFullscreen()
 
     SetMenu(m_hWnd, nullptr);
     SetWindowLongPtrW(m_hWnd, GWL_STYLE, m_savedStyle);
-    SetWindowLongPtrW(m_hWnd, GWL_EXSTYLE, m_savedExStyle);
+    SetWindowLongPtrW(m_hWnd, GWL_EXSTYLE, m_savedExStyle & ~WS_EX_TOPMOST);
     SetWindowPlacement(m_hWnd, &m_savedPlacement);
     SetWindowPos(
         m_hWnd,
         m_topMost ? HWND_TOPMOST : HWND_NOTOPMOST,
         0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
     LayoutPlayer();
     if (m_onFullscreenChanged)
@@ -430,6 +432,22 @@ LRESULT MainView::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     case WM_SIZE:
         OnResize();
         return 0;
+
+    case WM_DPICHANGED:
+    {
+        const auto* suggested = reinterpret_cast<const RECT*>(lParam);
+        if (suggested && !m_isFullscreen)
+        {
+            SetWindowPos(
+                m_hWnd, nullptr,
+                suggested->left, suggested->top,
+                suggested->right - suggested->left,
+                suggested->bottom - suggested->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        OnResize();
+        return 0;
+    }
 
     case WM_ERASEBKGND:
         return 1;

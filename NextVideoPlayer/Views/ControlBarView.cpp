@@ -352,6 +352,7 @@ HRESULT ControlBarView::CreateDeviceResources()
         DiscardDeviceResources();
         return hr;
     }
+    m_renderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
 
     // 100% Opaque 3-stop subtle dark gradient (은은한 다크 그라데이션)
     D2D1_GRADIENT_STOP stops[3]{};
@@ -433,6 +434,8 @@ void ControlBarView::Draw(HDC hdc)
         return;
     }
 
+    const float dpi = static_cast<float>(FontHelper::GetWindowDpi(m_hWnd));
+    m_renderTarget->SetDpi(dpi, dpi);
     m_renderTarget->BeginDraw();
 
     D2D1_SIZE_F rtSize = m_renderTarget->GetSize();
@@ -737,19 +740,28 @@ LRESULT ControlBarView::HandleMessage(HWND hWnd, UINT message, WPARAM wParam, LP
         InvalidateRect(hWnd, nullptr, FALSE);
         return 0;
     case WM_LBUTTONDOWN:
-        OnLButtonDown(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+    {
+        const UINT dpi = FontHelper::GetWindowDpi(hWnd);
+        OnLButtonDown(FontHelper::PxToDip(GET_X_LPARAM(lParam), dpi), FontHelper::PxToDip(GET_Y_LPARAM(lParam), dpi));
         return 0;
+    }
     case WM_LBUTTONDBLCLK:
         return 0;
     case WM_MOUSEMOVE:
-        OnMouseMove(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+    {
+        const UINT dpi = FontHelper::GetWindowDpi(hWnd);
+        OnMouseMove(FontHelper::PxToDip(GET_X_LPARAM(lParam), dpi), FontHelper::PxToDip(GET_Y_LPARAM(lParam), dpi));
         return 0;
+    }
     case WM_MOUSELEAVE:
         OnMouseLeave();
         return 0;
     case WM_LBUTTONUP:
-        OnLButtonUp(static_cast<float>(GET_X_LPARAM(lParam)), static_cast<float>(GET_Y_LPARAM(lParam)));
+    {
+        const UINT dpi = FontHelper::GetWindowDpi(hWnd);
+        OnLButtonUp(FontHelper::PxToDip(GET_X_LPARAM(lParam), dpi), FontHelper::PxToDip(GET_Y_LPARAM(lParam), dpi));
         return 0;
+    }
     case WM_CAPTURECHANGED:
     case WM_CANCELMODE:
         CancelDrag();
@@ -955,6 +967,10 @@ void ControlBarView::ShowSpeedPopup()
     }
 
     HWND ownerHwnd = GetRootOwnerHwnd();
+    const UINT dpi = FontHelper::GetWindowDpi(m_hWnd ? m_hWnd : ownerHwnd);
+    const int popupW = FontHelper::ScaleDipToPx(kSpeedPopupWidth, dpi);
+    const int popupH = FontHelper::ScaleDipToPx(kSpeedPopupHeight, dpi);
+    const int popupGap = FontHelper::ScaleDipToPx(kSpeedPopupGap, dpi);
 
     if (!m_speedPopupHwnd || !IsWindow(m_speedPopupHwnd))
     {
@@ -963,7 +979,7 @@ void ControlBarView::ShowSpeedPopup()
             kSpeedPopupClassName,
             nullptr,
             WS_POPUP | WS_CLIPSIBLINGS,
-            0, 0, kSpeedPopupWidth, kSpeedPopupHeight,
+            0, 0, popupW, popupH,
             ownerHwnd,
             nullptr,
             m_hInstance,
@@ -979,27 +995,27 @@ void ControlBarView::ShowSpeedPopup()
     }
 
     POINT ptBtn{
-        static_cast<LONG>(std::lround((m_btnSpeedReset.left + m_btnSpeedReset.right) * 0.5f)),
-        static_cast<LONG>(std::lround(m_btnSpeedReset.top))
+        FontHelper::ScaleDipToPx(static_cast<int>(std::lround((m_btnSpeedReset.left + m_btnSpeedReset.right) * 0.5f)), dpi),
+        FontHelper::ScaleDipToPx(static_cast<int>(std::lround(m_btnSpeedReset.top)), dpi)
     };
     ClientToScreen(m_hWnd, &ptBtn);
 
-    int popupX = ptBtn.x - kSpeedPopupWidth / 2;
-    int popupY = ptBtn.y - kSpeedPopupHeight - kSpeedPopupGap;
+    int popupX = ptBtn.x - popupW / 2;
+    int popupY = ptBtn.y - popupH - popupGap;
 
     HMONITOR hMonitor = MonitorFromWindow(ownerHwnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi{ sizeof(MONITORINFO) };
     if (GetMonitorInfoW(hMonitor, &mi))
     {
         popupX = std::clamp(popupX, static_cast<int>(mi.rcMonitor.left),
-            static_cast<int>(mi.rcMonitor.right) - kSpeedPopupWidth);
+            static_cast<int>(mi.rcMonitor.right) - popupW);
         if (popupY < mi.rcMonitor.top)
         {
-            const int btnHeight = static_cast<int>(std::lround(m_btnSpeedReset.bottom - m_btnSpeedReset.top));
-            popupY = ptBtn.y + btnHeight + kSpeedPopupGap;
+            const int btnHeight = FontHelper::ScaleDipToPx(static_cast<int>(std::lround(m_btnSpeedReset.bottom - m_btnSpeedReset.top)), dpi);
+            popupY = ptBtn.y + btnHeight + popupGap;
         }
         popupY = std::clamp(popupY, static_cast<int>(mi.rcMonitor.top),
-            static_cast<int>(mi.rcMonitor.bottom) - kSpeedPopupHeight);
+            static_cast<int>(mi.rcMonitor.bottom) - popupH);
     }
 
     m_hoveredSpeedIndex = -1;
@@ -1011,8 +1027,8 @@ void ControlBarView::ShowSpeedPopup()
         ownerTopMost ? HWND_TOPMOST : HWND_TOP,
         popupX,
         popupY,
-        kSpeedPopupWidth,
-        kSpeedPopupHeight,
+        popupW,
+        popupH,
         SWP_SHOWWINDOW);
     SetFocus(m_speedPopupHwnd);
     InvalidateRect(m_speedPopupHwnd, nullptr, FALSE);
@@ -1066,6 +1082,8 @@ void ControlBarView::DrawSpeedPopup(HDC hdc)
         return;
     }
 
+    const float dpi = static_cast<float>(FontHelper::GetWindowDpi(m_speedPopupHwnd));
+    m_renderTarget->SetDpi(dpi, dpi);
     m_renderTarget->BeginDraw();
 
     const D2D1_SIZE_F rtSize = m_renderTarget->GetSize();
@@ -1138,12 +1156,15 @@ LRESULT CALLBACK ControlBarView::SpeedPopupWndProc(HWND hWnd, UINT message, WPAR
 
 LRESULT ControlBarView::HandleSpeedPopupMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    auto hitTestRow = [](int x, int y) -> int {
-        if (x < 6 || x > kSpeedPopupWidth - 6 || y < kSpeedPopupPadY)
+    auto hitTestRow = [hWnd](int px, int py) -> int {
+        const UINT dpi = FontHelper::GetWindowDpi(hWnd);
+        const float x = FontHelper::PxToDip(px, dpi);
+        const float y = FontHelper::PxToDip(py, dpi);
+        if (x < 6.0f || x > static_cast<float>(kSpeedPopupWidth - 6) || y < static_cast<float>(kSpeedPopupPadY))
         {
             return -1;
         }
-        const int idx = (y - kSpeedPopupPadY) / kSpeedRowHeight;
+        const int idx = static_cast<int>((y - static_cast<float>(kSpeedPopupPadY)) / static_cast<float>(kSpeedRowHeight));
         if (idx < 0 || idx >= static_cast<int>(PlaybackSpeed::kPresets.size()))
         {
             return -1;
@@ -1262,6 +1283,12 @@ void ControlBarView::UpdateSeekTooltip(float mouseX)
     }
 
     HWND ownerHwnd = GetRootOwnerHwnd();
+    const UINT dpi = FontHelper::GetWindowDpi(m_hWnd ? m_hWnd : ownerHwnd);
+    const int tipW = FontHelper::ScaleDipToPx(kSeekTooltipWidth, dpi);
+    const int tipH = FontHelper::ScaleDipToPx(kSeekTooltipHeight, dpi);
+    const int tipGap = FontHelper::ScaleDipToPx(kSeekTooltipGap, dpi);
+    const int barH = FontHelper::ScaleDipToPx(kDefaultHeight, dpi);
+
     if (!m_seekTooltipHwnd || !IsWindow(m_seekTooltipHwnd))
     {
         m_seekTooltipHwnd = CreateWindowExW(
@@ -1269,7 +1296,7 @@ void ControlBarView::UpdateSeekTooltip(float mouseX)
             kSeekTooltipClassName,
             nullptr,
             WS_POPUP | WS_CLIPSIBLINGS,
-            0, 0, kSeekTooltipWidth, kSeekTooltipHeight,
+            0, 0, tipW, tipH,
             ownerHwnd,
             nullptr,
             m_hInstance,
@@ -1287,7 +1314,7 @@ void ControlBarView::UpdateSeekTooltip(float mouseX)
     const float clampedX = std::clamp(mouseX, m_seekBarRect.left, m_seekBarRect.right);
     m_seekTooltipText = FormatTime(SeekRatioFromMouseX(clampedX) * m_state.duration);
 
-    POINT pt{ static_cast<LONG>(std::lround(clampedX)), 0 };
+    POINT pt{ FontHelper::ScaleDipToPx(static_cast<int>(std::lround(clampedX)), dpi), 0 };
     ClientToScreen(m_hWnd, &pt);
 
     RECT barClient{};
@@ -1297,13 +1324,14 @@ void ControlBarView::UpdateSeekTooltip(float mouseX)
     ClientToScreen(m_hWnd, &ptLeft);
     ClientToScreen(m_hWnd, &ptRight);
 
-    int tipX = pt.x - kSeekTooltipWidth / 2;
-    int tipY = pt.y - kSeekTooltipHeight - kSeekTooltipGap;
+    int tipX = pt.x - tipW / 2;
+    int tipY = pt.y - tipH - tipGap;
 
-    if (ptRight.x - ptLeft.x >= kSeekTooltipWidth + 12)
+    const int margin = FontHelper::ScaleDipToPx(6, dpi);
+    if (ptRight.x - ptLeft.x >= tipW + margin * 2)
     {
-        tipX = std::clamp(tipX, static_cast<int>(ptLeft.x) + 6,
-            static_cast<int>(ptRight.x) - kSeekTooltipWidth - 6);
+        tipX = std::clamp(tipX, static_cast<int>(ptLeft.x) + margin,
+            static_cast<int>(ptRight.x) - tipW - margin);
     }
 
     HMONITOR hMonitor = MonitorFromWindow(ownerHwnd ? ownerHwnd : m_hWnd, MONITOR_DEFAULTTONEAREST);
@@ -1311,13 +1339,13 @@ void ControlBarView::UpdateSeekTooltip(float mouseX)
     if (GetMonitorInfoW(hMonitor, &mi))
     {
         tipX = std::clamp(tipX, static_cast<int>(mi.rcMonitor.left),
-            static_cast<int>(mi.rcMonitor.right) - kSeekTooltipWidth);
+            static_cast<int>(mi.rcMonitor.right) - tipW);
         if (tipY < mi.rcMonitor.top)
         {
-            tipY = pt.y + kDefaultHeight + kSeekTooltipGap;
+            tipY = pt.y + barH + tipGap;
         }
         tipY = std::clamp(tipY, static_cast<int>(mi.rcMonitor.top),
-            static_cast<int>(mi.rcMonitor.bottom) - kSeekTooltipHeight);
+            static_cast<int>(mi.rcMonitor.bottom) - tipH);
     }
 
     const bool ownerTopMost = ownerHwnd && (GetWindowLongPtrW(ownerHwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
@@ -1326,8 +1354,8 @@ void ControlBarView::UpdateSeekTooltip(float mouseX)
         ownerTopMost ? HWND_TOPMOST : HWND_TOP,
         tipX,
         tipY,
-        kSeekTooltipWidth,
-        kSeekTooltipHeight,
+        tipW,
+        tipH,
         SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
     InvalidateRect(m_seekTooltipHwnd, nullptr, FALSE);
 }
@@ -1365,6 +1393,8 @@ void ControlBarView::DrawSeekTooltip(HDC hdc)
         return;
     }
 
+    const float dpi = static_cast<float>(FontHelper::GetWindowDpi(m_seekTooltipHwnd));
+    m_renderTarget->SetDpi(dpi, dpi);
     m_renderTarget->BeginDraw();
 
     const D2D1_SIZE_F rtSize = m_renderTarget->GetSize();

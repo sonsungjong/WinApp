@@ -65,22 +65,26 @@ bool PlaylistView::Initialize(HINSTANCE instance, HWND owner)
 
     int posX = CW_USEDEFAULT;
     int posY = CW_USEDEFAULT;
+    const UINT ownerDpi = FontHelper::GetWindowDpi(owner);
+    const int initW = FontHelper::ScaleDipToPx(kDefaultWidth, ownerDpi);
+    const int initH = FontHelper::ScaleDipToPx(kDefaultHeight, ownerDpi);
+
     RECT rc{};
     if (owner && GetWindowRect(owner, &rc))
     {
-        posX = rc.left + ((rc.right - rc.left) - kDefaultWidth) / 2;
-        posY = rc.top + ((rc.bottom - rc.top) - kDefaultHeight) / 2;
+        posX = rc.left + ((rc.right - rc.left) - initW) / 2;
+        posY = rc.top + ((rc.bottom - rc.top) - initH) / 2;
     }
 
     m_hwnd = CreateWindowExW(
         0,
         kClassName,
         L"재생목록 (Playlist)",
-        WS_POPUP | WS_THICKFRAME | WS_CLIPCHILDREN,
+        WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
         posX,
         posY,
-        kDefaultWidth,
-        kDefaultHeight,
+        initW,
+        initH,
         owner,
         nullptr,
         instance,
@@ -96,6 +100,10 @@ bool PlaylistView::Initialize(HINSTANCE instance, HWND owner)
     DwmSetWindowAttribute(m_hwnd, 19, &darkMode, sizeof(darkMode));
     DWORD cornerPref = 2; // DWMWCP_ROUND
     DwmSetWindowAttribute(m_hwnd, 33, &cornerPref, sizeof(cornerPref));
+    COLORREF borderCol = RGB(0x32, 0x38, 0x48);
+    DwmSetWindowAttribute(m_hwnd, 34, &borderCol, sizeof(borderCol));
+    SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
     return true;
 }
@@ -105,6 +113,69 @@ bool PlaylistView::IsVisible() const
     return m_hwnd && IsWindowVisible(m_hwnd);
 }
 
+void PlaylistView::EnsureOnOwnerMonitor()
+{
+    if (!m_hwnd || !IsWindow(m_hwnd) || !m_owner || !IsWindow(m_owner))
+    {
+        return;
+    }
+
+    HMONITOR ownerMon = MonitorFromWindow(m_owner, MONITOR_DEFAULTTONEAREST);
+    HMONITOR selfMon = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTONULL);
+    if (m_hasShownOnce && selfMon == ownerMon)
+    {
+        return;
+    }
+
+    RECT selfRc{};
+    RECT ownerRc{};
+    if (!GetWindowRect(m_hwnd, &selfRc) || !GetWindowRect(m_owner, &ownerRc))
+    {
+        return;
+    }
+
+    const int w = selfRc.right - selfRc.left;
+    const int h = selfRc.bottom - selfRc.top;
+    int x = ownerRc.left + ((ownerRc.right - ownerRc.left) - w) / 2;
+    int y = ownerRc.top + ((ownerRc.bottom - ownerRc.top) - h) / 2;
+
+    const bool ownerTopMost = (GetWindowLongPtrW(m_owner, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    MONITORINFO mi{ sizeof(mi) };
+    if (GetMonitorInfoW(ownerMon, &mi))
+    {
+        const RECT& bounds = ownerTopMost ? mi.rcMonitor : mi.rcWork;
+        x = std::clamp(x, static_cast<int>(bounds.left), (std::max)(static_cast<int>(bounds.left), static_cast<int>(bounds.right) - w));
+        y = std::clamp(y, static_cast<int>(bounds.top), (std::max)(static_cast<int>(bounds.top), static_cast<int>(bounds.bottom) - h));
+    }
+
+    SetWindowPos(m_hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    m_hasShownOnce = true;
+}
+
+void PlaylistView::SyncOwnerZOrder()
+{
+    if (!m_hwnd || !IsWindow(m_hwnd))
+    {
+        return;
+    }
+
+    const bool ownerTopMost = m_owner && IsWindow(m_owner) &&
+        ((GetWindowLongPtrW(m_owner, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+    SetWindowPos(
+        m_hwnd,
+        ownerTopMost ? HWND_TOPMOST : HWND_NOTOPMOST,
+        0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    if (IsVisible())
+    {
+        SetWindowPos(
+            m_hwnd,
+            ownerTopMost ? HWND_TOPMOST : HWND_TOP,
+            0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+}
+
 void PlaylistView::SetVisible(bool visible)
 {
     if (!m_hwnd || !IsWindow(m_hwnd))
@@ -112,11 +183,31 @@ void PlaylistView::SetVisible(bool visible)
         return;
     }
 
-    ShowWindow(m_hwnd, visible ? SW_SHOW : SW_HIDE);
     if (visible)
     {
+        if (IsIconic(m_hwnd))
+        {
+            ShowWindow(m_hwnd, SW_RESTORE);
+        }
+        EnsureOnOwnerMonitor();
+        const bool ownerTopMost = m_owner && IsWindow(m_owner) &&
+            ((GetWindowLongPtrW(m_owner, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+        SetWindowPos(
+            m_hwnd,
+            ownerTopMost ? HWND_TOPMOST : HWND_TOP,
+            0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         SetForegroundWindow(m_hwnd);
+        SetFocus(m_hwnd);
         InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+    else
+    {
+        ShowWindow(m_hwnd, SW_HIDE);
+        if (m_owner && IsWindow(m_owner))
+        {
+            SetFocus(m_owner);
+        }
     }
     if (m_onVisibilityChanged)
     {
@@ -295,7 +386,7 @@ HRESULT PlaylistView::CreateDeviceIndependentResources()
 
     hr = m_dwriteFactory->CreateTextFormat(
         korFontName, m_customFontCollection.Get(),
-        DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+        DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
         12.0f, L"ko-kr", m_captionFormat.GetAddressOf());
     if (FAILED(hr)) return hr;
     m_captionFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
@@ -309,7 +400,7 @@ HRESULT PlaylistView::CreateDeviceIndependentResources()
 
     hr = m_dwriteFactory->CreateTextFormat(
         korFontName, m_customFontCollection.Get(),
-        DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+        DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
         11.5f, L"ko-kr", m_badgeFormat.GetAddressOf());
     if (FAILED(hr)) return hr;
     m_badgeFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -325,7 +416,7 @@ HRESULT PlaylistView::CreateDeviceIndependentResources()
 
     hr = m_dwriteFactory->CreateTextFormat(
         korFontName, m_customFontCollection.Get(),
-        DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+        DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
         14.0f, L"ko-kr", m_itemFormat.GetAddressOf());
     if (FAILED(hr)) return hr;
     m_itemFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
@@ -333,7 +424,7 @@ HRESULT PlaylistView::CreateDeviceIndependentResources()
 
     hr = m_dwriteFactory->CreateTextFormat(
         korFontName, m_customFontCollection.Get(),
-        DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+        DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
         11.0f, L"ko-kr", m_subFormat.GetAddressOf());
     if (FAILED(hr)) return hr;
     m_subFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -341,7 +432,7 @@ HRESULT PlaylistView::CreateDeviceIndependentResources()
 
     hr = m_dwriteFactory->CreateTextFormat(
         korFontName, m_customFontCollection.Get(),
-        DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+        DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
         12.5f, L"ko-kr", m_btnFormat.GetAddressOf());
     if (FAILED(hr)) return hr;
     m_btnFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -373,6 +464,10 @@ HRESULT PlaylistView::CreateDeviceResources()
         D2D1::HwndRenderTargetProperties(m_hwnd, size),
         m_renderTarget.GetAddressOf());
     if (FAILED(hr)) return hr;
+
+    const float dpi = static_cast<float>(FontHelper::GetWindowDpi(m_hwnd));
+    m_renderTarget->SetDpi(dpi, dpi);
+    m_renderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
 
     m_thumbnailCache.clear();
 
@@ -923,8 +1018,8 @@ void PlaylistView::Draw()
 
     const wchar_t* footerLabels[3] = {
         L"+  파일 추가 (Add)",
-        L"▷  선택 재생 (Play)",
-        L"🗑  비우기 (Clear)"
+        L"▶  선택 재생 (Play)",
+        L"비우기 (Clear)"
     };
 
     for (int i = 0; i < 3; ++i)
@@ -1004,7 +1099,23 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
     switch (message)
     {
     case WM_NCCALCSIZE:
-        if (wParam == TRUE) return 0; // Frameless client area fills entire window
+        return 0;
+
+    case WM_NCPAINT:
+        return 0;
+
+    case WM_NCACTIVATE:
+        return TRUE;
+
+    case WM_NCLBUTTONDOWN:
+        if (wParam >= HTLEFT && wParam <= HTBOTTOMRIGHT && !IsZoomed(hwnd))
+        {
+            m_resizeEdge = static_cast<int>(wParam);
+            GetCursorPos(&m_resizeStartPt);
+            GetWindowRect(hwnd, &m_resizeStartRect);
+            SetCapture(hwnd);
+            return 0;
+        }
         break;
 
     case WM_NCHITTEST:
@@ -1013,7 +1124,7 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
         ScreenToClient(hwnd, &pt);
         RECT rc{};
         GetClientRect(hwnd, &rc);
-        const int border = 6;
+        const int border = FontHelper::ScaleDipToPx(6, FontHelper::GetWindowDpi(hwnd));
 
         if (!IsZoomed(hwnd))
         {
@@ -1059,16 +1170,76 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
 
     case WM_GETMINMAXINFO:
     {
+        const UINT dpi = FontHelper::GetWindowDpi(hwnd);
         auto* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
-        mmi->ptMinTrackSize.x = 500;
-        mmi->ptMinTrackSize.y = 380;
+        mmi->ptMinTrackSize.x = FontHelper::ScaleDipToPx(500, dpi);
+        mmi->ptMinTrackSize.y = FontHelper::ScaleDipToPx(380, dpi);
+        return 0;
+    }
+
+    case WM_DPICHANGED:
+    {
+        const UINT newDpi = HIWORD(wParam);
+        const auto* suggested = reinterpret_cast<const RECT*>(lParam);
+        if (suggested)
+        {
+            SetWindowPos(
+                hwnd, nullptr,
+                suggested->left, suggested->top,
+                suggested->right - suggested->left,
+                suggested->bottom - suggested->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        if (m_renderTarget)
+        {
+            const float fDpi = static_cast<float>(newDpi ? newDpi : 96u);
+            m_renderTarget->SetDpi(fDpi, fDpi);
+        }
+        InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     }
 
     case WM_MOUSEMOVE:
     {
-        float x = static_cast<float>(GET_X_LPARAM(lParam));
-        float y = static_cast<float>(GET_Y_LPARAM(lParam));
+        if (m_resizeEdge != 0)
+        {
+            POINT curPt{};
+            GetCursorPos(&curPt);
+            const int dx = curPt.x - m_resizeStartPt.x;
+            const int dy = curPt.y - m_resizeStartPt.y;
+            const UINT dpi = FontHelper::GetWindowDpi(hwnd);
+            const int minW = FontHelper::ScaleDipToPx(500, dpi);
+            const int minH = FontHelper::ScaleDipToPx(380, dpi);
+
+            RECT newRect = m_resizeStartRect;
+            if (m_resizeEdge == HTLEFT || m_resizeEdge == HTTOPLEFT || m_resizeEdge == HTBOTTOMLEFT)
+            {
+                newRect.left = (std::min)(m_resizeStartRect.left + dx, m_resizeStartRect.right - minW);
+            }
+            if (m_resizeEdge == HTRIGHT || m_resizeEdge == HTTOPRIGHT || m_resizeEdge == HTBOTTOMRIGHT)
+            {
+                newRect.right = (std::max)(m_resizeStartRect.right + dx, m_resizeStartRect.left + minW);
+            }
+            if (m_resizeEdge == HTTOP || m_resizeEdge == HTTOPLEFT || m_resizeEdge == HTTOPRIGHT)
+            {
+                newRect.top = (std::min)(m_resizeStartRect.top + dy, m_resizeStartRect.bottom - minH);
+            }
+            if (m_resizeEdge == HTBOTTOM || m_resizeEdge == HTBOTTOMLEFT || m_resizeEdge == HTBOTTOMRIGHT)
+            {
+                newRect.bottom = (std::max)(m_resizeStartRect.bottom + dy, m_resizeStartRect.top + minH);
+            }
+
+            SetWindowPos(
+                hwnd, nullptr,
+                newRect.left, newRect.top,
+                newRect.right - newRect.left, newRect.bottom - newRect.top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+            return 0;
+        }
+
+        const UINT dpi = FontHelper::GetWindowDpi(hwnd);
+        float x = FontHelper::PxToDip(GET_X_LPARAM(lParam), dpi);
+        float y = FontHelper::PxToDip(GET_Y_LPARAM(lParam), dpi);
 
         if (!m_trackingMouse)
         {
@@ -1129,8 +1300,9 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
     case WM_LBUTTONDOWN:
     {
         SetFocus(hwnd);
-        float x = static_cast<float>(GET_X_LPARAM(lParam));
-        float y = static_cast<float>(GET_Y_LPARAM(lParam));
+        const UINT dpi = FontHelper::GetWindowDpi(hwnd);
+        float x = FontHelper::PxToDip(GET_X_LPARAM(lParam), dpi);
+        float y = FontHelper::PxToDip(GET_Y_LPARAM(lParam), dpi);
 
         int titleBtn = HitTestTitleBarButton(x, y);
         if (titleBtn >= 0)
@@ -1216,8 +1388,9 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
 
     case WM_LBUTTONDBLCLK:
     {
-        float x = static_cast<float>(GET_X_LPARAM(lParam));
-        float y = static_cast<float>(GET_Y_LPARAM(lParam));
+        const UINT dpi = FontHelper::GetWindowDpi(hwnd);
+        float x = FontHelper::PxToDip(GET_X_LPARAM(lParam), dpi);
+        float y = FontHelper::PxToDip(GET_Y_LPARAM(lParam), dpi);
 
         int visibleIdx = HitTestVisibleCard(x, y, nullptr);
         if (visibleIdx >= 0 && visibleIdx < static_cast<int>(m_filteredIndices.size()))
@@ -1233,8 +1406,16 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
 
     case WM_LBUTTONUP:
     {
-        float x = static_cast<float>(GET_X_LPARAM(lParam));
-        float y = static_cast<float>(GET_Y_LPARAM(lParam));
+        if (m_resizeEdge != 0)
+        {
+            m_resizeEdge = 0;
+            ReleaseCapture();
+            return 0;
+        }
+
+        const UINT dpi = FontHelper::GetWindowDpi(hwnd);
+        float x = FontHelper::PxToDip(GET_X_LPARAM(lParam), dpi);
+        float y = FontHelper::PxToDip(GET_Y_LPARAM(lParam), dpi);
 
         if (m_isDraggingScroll)
         {
@@ -1332,6 +1513,11 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
                 if (m_onPlay) m_onPlay(m_selectedIndices);
                 return 0;
             }
+            if (wParam == VK_F3 || wParam == VK_ESCAPE)
+            {
+                SetVisible(false);
+                return 0;
+            }
             if (wParam == VK_SPACE || wParam == VK_LEFT || wParam == VK_RIGHT ||
                 wParam == VK_UP || wParam == VK_DOWN ||
                 wParam == VK_OEM_4 || wParam == VK_OEM_6 || wParam == VK_OEM_5)
@@ -1345,6 +1531,14 @@ LRESULT PlaylistView::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPAR
         }
         break;
     }
+
+    case WM_CAPTURECHANGED:
+        if (m_resizeEdge != 0)
+        {
+            m_resizeEdge = 0;
+            return 0;
+        }
+        break;
 
     case WM_CLOSE:
         SetVisible(false);

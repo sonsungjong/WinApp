@@ -24,6 +24,25 @@
       <uap:VisualElements DisplayName="NextVideoPlayer" Description="Windows video player"
                           BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
                           Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="nextvideoplayer.video">
+            <uap:DisplayName>NextVideoPlayer Video</uap:DisplayName>
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.mp4</uap:FileType>
+              <uap:FileType>.mkv</uap:FileType>
+              <uap:FileType>.avi</uap:FileType>
+              <uap:FileType>.wmv</uap:FileType>
+              <uap:FileType>.mov</uap:FileType>
+              <uap:FileType>.webm</uap:FileType>
+              <uap:FileType>.flv</uap:FileType>
+              <uap:FileType>.ts</uap:FileType>
+              <uap:FileType>.m4v</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
     </Application>
   </Applications>
   <Capabilities>

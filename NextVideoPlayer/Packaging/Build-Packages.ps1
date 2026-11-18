@@ -167,6 +167,18 @@ if ($Target -in 'All','MSIX') {
     $manifest.Package.Dependencies.TargetDeviceFamily.SetAttribute('MaxVersionTested',$tools.SdkVersion)
     $manifest.Package.Applications.Application.VisualElements.SetAttribute('DisplayName',$config.DisplayName)
     $manifest.Package.Applications.Application.VisualElements.SetAttribute('Description',$config.Description)
+    $uapNs = 'http://schemas.microsoft.com/appx/manifest/uap/windows10'
+    $fileAssocExt = @($manifest.Package.Applications.Application.Extensions.Extension | Where-Object { $_.Category -eq 'windows.fileTypeAssociation' }) | Select-Object -First 1
+    if ($fileAssocExt -and $config.SupportedFileTypes) {
+        $fileAssocExt.FileTypeAssociation.DisplayName = "$($config.DisplayName) Video"
+        $supportedNode = $fileAssocExt.FileTypeAssociation.SupportedFileTypes
+        $supportedNode.RemoveAll()
+        foreach ($ext in $config.SupportedFileTypes) {
+            $item = $manifest.CreateElement('uap','FileType',$uapNs)
+            $item.InnerText = [string]$ext
+            $null = $supportedNode.AppendChild($item)
+        }
+    }
     $manifest.Save((Join-Path $msixDirectory 'AppxManifest.xml'))
     $msixPath = Join-Path $run "$filePrefix.msix"
     Invoke-PackageTool $tools.MakeAppx @('pack','/d',$msixDirectory,'/p',$msixPath,'/o')

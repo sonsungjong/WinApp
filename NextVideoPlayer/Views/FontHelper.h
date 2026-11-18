@@ -7,6 +7,10 @@
 namespace FontHelper
 {
     std::vector<std::wstring> GetBundledFontPaths();
+    UINT GetWindowDpi(HWND hwnd);
+    int ScaleDipToPx(int dip, UINT dpi);
+    float PxToDip(int px, UINT dpi);
+    HFONT CreateGdiFont(UINT dpi, int dipHeight = -14);
     class Resources
     {
     public:

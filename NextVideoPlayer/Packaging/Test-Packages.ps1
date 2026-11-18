@@ -5,6 +5,7 @@ $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $version = Get-AppVersion $projectRoot
 if (-not $PackageDirectory) { $PackageDirectory = Join-Path $projectRoot "artifacts\packages\$($version.ToString(3))\store" }
 $info = Get-Content -LiteralPath (Join-Path $PackageDirectory 'build-info.json') -Raw | ConvertFrom-Json
+$packageConfig = Get-Content -LiteralPath "$PSScriptRoot\Package.config.json" -Raw | ConvertFrom-Json
 $scratch = Join-Path $projectRoot ('artifacts\packaging\verification\' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratch -Force | Out-Null
 $tools = Get-PackageBuildTools
@@ -43,7 +44,13 @@ try {
                 'http://schemas.microsoft.com/appx/manifest/desktop/windows10/4') -ne 'true') {
                 throw 'MSIX must preserve support for multiple player instances.'
             }
-            Write-Host 'PASS: MSIX manifest, multiple-instance declaration and all payload SHA256 hashes.'
+            $fileAssoc = @($manifest.Package.Applications.Application.Extensions.Extension | Where-Object { $_.Category -eq 'windows.fileTypeAssociation' }) | Select-Object -First 1
+            if (-not $fileAssoc) { throw 'MSIX manifest is missing windows.fileTypeAssociation extension.' }
+            $msixTypes = @($fileAssoc.FileTypeAssociation.SupportedFileTypes.FileType)
+            foreach ($ext in $packageConfig.SupportedFileTypes) {
+                if ($ext -notin $msixTypes) { throw "MSIX file association is missing extension: $ext" }
+            }
+            Write-Host 'PASS: MSIX manifest, file associations, multiple-instance declaration and all payload SHA256 hashes.'
         } elseif (-not $SkipMsiExtraction) {
             $extract = Join-Path $scratch 'msi'
             New-Item -ItemType Directory -Path $extract -Force | Out-Null
@@ -56,7 +63,49 @@ try {
             $exe = @(Get-ChildItem -LiteralPath $extract -Filter 'NextVideoPlayer.exe' -File -Recurse)
             if ($exe.Count -ne 1) { throw 'MSI did not extract the player executable.' }
             Assert-PackageFileHashes $exe[0].Directory.FullName
-            Write-Host 'PASS: Windows Installer administrative extraction and all payload SHA256 hashes.'
+            function Read-MsiTablePairs($Database, [string]$Sql) {
+                $pairs = @()
+                $view = $Database.GetType().InvokeMember('OpenView',[Reflection.BindingFlags]::InvokeMethod,$null,$Database,@($Sql))
+                try {
+                    $null = $view.GetType().InvokeMember('Execute',[Reflection.BindingFlags]::InvokeMethod,$null,$view,@())
+                    while ($rec = $view.GetType().InvokeMember('Fetch',[Reflection.BindingFlags]::InvokeMethod,$null,$view,@())) {
+                        try {
+                            $c1 = $rec.GetType().InvokeMember('StringData',[Reflection.BindingFlags]::GetProperty,$null,$rec,@(1))
+                            $c2 = $rec.GetType().InvokeMember('StringData',[Reflection.BindingFlags]::GetProperty,$null,$rec,@(2))
+                            $pairs += "$c1|$c2"
+                        } finally {
+                            $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($rec)
+                        }
+                    }
+                } finally {
+                    $null = $view.GetType().InvokeMember('Close',[Reflection.BindingFlags]::InvokeMethod,$null,$view,@())
+                    $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)
+                }
+                return $pairs
+            }
+            $msiInstaller = New-Object -ComObject WindowsInstaller.Installer
+            $msiDb = $null
+            try {
+                $msiDb = $msiInstaller.GetType().InvokeMember('OpenDatabase',[Reflection.BindingFlags]::InvokeMethod,$null,$msiInstaller,@($package,0))
+                $msiRegKeys = Read-MsiTablePairs $msiDb 'SELECT `Key`,`Name` FROM `Registry`'
+                $msiCtrlPairs = Read-MsiTablePairs $msiDb 'SELECT `Control`,`Property` FROM `Control` WHERE `Dialog_`=''InstallDirDlg'''
+            } finally {
+                if ($msiDb) { $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($msiDb) }
+                $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($msiInstaller)
+            }
+            if ('Software\RegisteredApplications|NextVideoPlayer' -notin $msiRegKeys) {
+                throw 'MSI Registry table is missing RegisteredApplications entry.'
+            }
+            foreach ($ext in $packageConfig.SupportedFileTypes) {
+                if ("Software\Classes\$ext\OpenWithProgids|NextVideoPlayer.Video" -notin $msiRegKeys -or
+                    "Software\Classes\Applications\NextVideoPlayer.exe\SupportedTypes|$ext" -notin $msiRegKeys) {
+                    throw "MSI Registry table is missing file association entries for $ext."
+                }
+            }
+            if ('DefaultApp|NVP_OPEN_DEFAULT_APPS' -notin $msiCtrlPairs) {
+                throw 'MSI InstallDirDlg is missing the DefaultApp checkbox.'
+            }
+            Write-Host 'PASS: Windows Installer administrative extraction, file associations, default-app option and all payload SHA256 hashes.'
         }
     }
     Write-Host 'Package verification passed.'

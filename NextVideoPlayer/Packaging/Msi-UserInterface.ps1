@@ -19,6 +19,7 @@ foreach ($statement in $uiSchema) {
 Add-MsiRow 'TextStyle' @('Normal','Malgun Gothic',10,0,0)
 Add-MsiRow 'TextStyle' @('Heading','Malgun Gothic',15,0,1)
 Add-MsiRow 'CheckBox' @('NVP_CREATE_DESKTOP','1')
+Add-MsiRow 'CheckBox' @('NVP_OPEN_DEFAULT_APPS','1')
 
 function Add-UiControl($Dialog,$Name,$Type,$X,$Y,$Width,$Height,$Property,$Text,$Next=$null,$Attributes=3) {
     Add-MsiRow 'Control' @($Dialog,$Name,$Type,$X,$Y,$Width,$Height,$Attributes,$Property,$Text,$Next,$null)
@@ -49,11 +50,12 @@ Add-UiEvent 'ScopeDlg' 'Next' '[MSIINSTALLPERUSER]' '{}' 'NVP_SETUP_SCOPE = "mac
 Add-UiEvent 'ScopeDlg' 'Next' 'EndDialog' 'Return' '1' 5
 Add-UiEvent 'ScopeDlg' 'Cancel' 'EndDialog' 'Exit'
 
-Add-UiDialog 'InstallDirDlg' '설치 위치와 바로가기' '설치 폴더와 바탕화면 바로가기 생성 여부를 확인하세요.' 'PathLabel' 'Install' 'Cancel'
-Add-UiControl 'InstallDirDlg' 'PathLabel' 'Text' 24 87 360 16 $null '설치 폴더' 'Path'
-Add-UiControl 'InstallDirDlg' 'Path' 'PathEdit' 24 108 360 22 'INSTALLFOLDER' $null 'Browse'
-Add-UiControl 'InstallDirDlg' 'Browse' 'PushButton' 302 137 82 20 $null '찾아보기...' 'Desktop'
-Add-UiControl 'InstallDirDlg' 'Desktop' 'CheckBox' 24 175 360 20 'NVP_CREATE_DESKTOP' '바탕화면에 바로가기 만들기' 'Install'
+Add-UiDialog 'InstallDirDlg' '설치 위치와 바로가기' '설치 폴더, 바탕화면 바로가기 및 기본 앱 설정 여부를 확인하세요.' 'PathLabel' 'Install' 'Cancel'
+Add-UiControl 'InstallDirDlg' 'PathLabel' 'Text' 24 82 360 16 $null '설치 폴더' 'Path'
+Add-UiControl 'InstallDirDlg' 'Path' 'PathEdit' 24 102 360 22 'INSTALLFOLDER' $null 'Browse'
+Add-UiControl 'InstallDirDlg' 'Browse' 'PushButton' 302 131 82 20 $null '찾아보기...' 'Desktop'
+Add-UiControl 'InstallDirDlg' 'Desktop' 'CheckBox' 24 166 360 20 'NVP_CREATE_DESKTOP' '바탕화면에 바로가기 만들기' 'DefaultApp'
+Add-UiControl 'InstallDirDlg' 'DefaultApp' 'CheckBox' 24 194 360 20 'NVP_OPEN_DEFAULT_APPS' '동영상 기본 앱으로 설정 (설치 후 Windows 기본 앱 설정 열기)' 'Install'
 Add-UiControl 'InstallDirDlg' 'Install' 'PushButton' 240 249 72 20 $null '설치' 'Cancel'
 Add-UiControl 'InstallDirDlg' 'Cancel' 'PushButton' 322 249 72 20 $null '취소' 'PathLabel'
 Add-UiEvent 'InstallDirDlg' 'Browse' '[NVP_OLD_INSTALLFOLDER]' '[INSTALLFOLDER]'
@@ -63,7 +65,8 @@ Add-UiEvent 'InstallDirDlg' 'Install' '[NVP_OPTIONS_SET]' '1' '1' 2
 # An unchecked checkbox clears its property. Send an explicit zero to the
 # server so the Property-table default cannot turn it back on after elevation.
 Add-UiEvent 'InstallDirDlg' 'Install' '[NVP_CREATE_DESKTOP]' '0' 'NOT NVP_CREATE_DESKTOP' 3
-Add-UiEvent 'InstallDirDlg' 'Install' 'EndDialog' 'Return' '1' 4
+Add-UiEvent 'InstallDirDlg' 'Install' '[NVP_OPEN_DEFAULT_APPS]' '0' 'NOT NVP_OPEN_DEFAULT_APPS' 4
+Add-UiEvent 'InstallDirDlg' 'Install' 'EndDialog' 'Return' '1' 5
 Add-UiEvent 'InstallDirDlg' 'Cancel' 'EndDialog' 'Exit'
 
 Add-MsiRow 'Dialog' @('BrowseDlg',50,50,410,310,3,'설치 폴더 선택','Path','OK','Cancel')
@@ -113,7 +116,13 @@ foreach ($ending in @(
 )) {
     Add-UiDialog $ending[0] $ending[1] $ending[2] 'Finish' 'Finish' 'Finish'
     Add-UiControl $ending[0] 'Finish' 'PushButton' 322 249 72 20 $null '닫기' 'Finish'
-    Add-UiEvent $ending[0] 'Finish' 'EndDialog' 'Return'
+    if ($ending[0] -eq 'ExitDlg') {
+        Add-UiEvent 'ExitDlg' 'Finish' 'DoAction' 'OpenDefaultAppsUser' ("NOT Installed AND NVP_OPEN_DEFAULT_APPS = `"1`" AND $userContext") 1
+        Add-UiEvent 'ExitDlg' 'Finish' 'DoAction' 'OpenDefaultAppsMachine' ("NOT Installed AND NVP_OPEN_DEFAULT_APPS = `"1`" AND $machineContext") 2
+        Add-UiEvent 'ExitDlg' 'Finish' 'EndDialog' 'Return' '1' 3
+    } else {
+        Add-UiEvent $ending[0] 'Finish' 'EndDialog' 'Return'
+    }
     Add-MsiRow 'InstallUISequence' @($ending[0],'UILevel = 5',[int]$ending[3])
 }
 foreach ($action in @('InstallFiles','CreateShortcuts','WriteRegistryValues','RemoveFiles','RemoveShortcuts','RemoveRegistryValues','RegisterProduct','PublishProduct','InstallFinalize')) {

@@ -37,6 +37,64 @@ namespace FontHelper
         return found;
     }
 
+    UINT GetWindowDpi(HWND hwnd)
+    {
+        using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
+        using GetDpiForSystemFn = UINT(WINAPI*)();
+        static const auto getDpiForWindow = []() -> GetDpiForWindowFn {
+            if (HMODULE user32 = GetModuleHandleW(L"user32.dll"))
+                return reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(user32, "GetDpiForWindow"));
+            return nullptr;
+        }();
+        static const auto getDpiForSystem = []() -> GetDpiForSystemFn {
+            if (HMODULE user32 = GetModuleHandleW(L"user32.dll"))
+                return reinterpret_cast<GetDpiForSystemFn>(GetProcAddress(user32, "GetDpiForSystem"));
+            return nullptr;
+        }();
+
+        if (hwnd && getDpiForWindow)
+        {
+            const UINT dpi = getDpiForWindow(hwnd);
+            if (dpi >= 96) return dpi;
+        }
+        if (getDpiForSystem)
+        {
+            const UINT dpi = getDpiForSystem();
+            if (dpi >= 96) return dpi;
+        }
+        HDC hdc = GetDC(nullptr);
+        const UINT fallback = hdc ? static_cast<UINT>(GetDeviceCaps(hdc, LOGPIXELSX)) : 96u;
+        if (hdc) ReleaseDC(nullptr, hdc);
+        return fallback >= 96 ? fallback : 96u;
+    }
+
+    int ScaleDipToPx(int dip, UINT dpi)
+    {
+        return MulDiv(dip, static_cast<int>(dpi ? dpi : 96u), 96);
+    }
+
+    float PxToDip(int px, UINT dpi)
+    {
+        const UINT effectiveDpi = dpi ? dpi : 96u;
+        return static_cast<float>(px) * 96.0f / static_cast<float>(effectiveDpi);
+    }
+
+    HFONT CreateGdiFont(UINT dpi, int dipHeight)
+    {
+        const int scaledHeight = MulDiv(dipHeight, static_cast<int>(dpi ? dpi : 96u), 96);
+        // Use hinted Malgun Gothic for GDI Win32 child controls; unhinted NanumSquare tears under GDI ClearType.
+        HFONT font = CreateFontW(scaledHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Malgun Gothic");
+        if (!font)
+        {
+            font = CreateFontW(scaledHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        }
+        return font;
+    }
+
     Resources::Resources()
     {
         for (const auto& path : GetBundledFontPaths())
@@ -44,9 +102,7 @@ namespace FontHelper
             if (AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr) > 0)
                 m_loadedFonts.push_back(path);
         }
-        m_font = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"NanumSquare");
+        m_font = CreateGdiFont(GetWindowDpi(nullptr), -13);
         m_ownsFont = m_font != nullptr;
         if (!m_font) m_font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
     }

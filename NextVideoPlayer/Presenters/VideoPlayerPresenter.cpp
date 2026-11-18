@@ -116,11 +116,13 @@ void VideoPlayerPresenter::HandleShellDropFiles(HDROP hDrop)
 void VideoPlayerPresenter::OnShellFullscreenChanged(bool fullscreen)
 {
     m_player.SetFullscreenActive(fullscreen);
+    m_playlistPresenter.SyncOwnerZOrder();
 }
 
 void VideoPlayerPresenter::OnShellActivationChanged(bool active)
 {
     m_player.SetWindowActive(active);
+    if (active) m_playlistPresenter.SyncOwnerZOrder();
 }
 
 void VideoPlayerPresenter::ApplyConfig()
@@ -132,6 +134,7 @@ void VideoPlayerPresenter::ApplyConfig()
     m_model.SetSubtitleVisible(m_config.subtitleVisible);
     m_model.SetSubtitleScale(m_config.subtitleScale);
     m_shell.SetTopMost(m_config.topMost);
+    m_playlistPresenter.SyncOwnerZOrder();
 }
 
 void VideoPlayerPresenter::SyncConfig()
@@ -202,6 +205,7 @@ void VideoPlayerPresenter::OnTopMostToggled()
 {
     m_config.topMost = !m_config.topMost;
     m_shell.SetTopMost(m_config.topMost);
+    m_playlistPresenter.SyncOwnerZOrder();
     SaveConfig();
     UpdateView();
 }

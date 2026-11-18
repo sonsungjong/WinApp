@@ -152,10 +152,11 @@ function New-PlayerMsi {
             NVP_INSTALL_SUBDIR = 'NextVideoPlayer'
             NVP_CREATE_DESKTOP = '1'
             DefaultUIFont = 'Normal'
-            SecureCustomProperties = 'OLDPRODUCTS;NEWERPRODUCTS;ALLUSERS;MSIINSTALLPERUSER;INSTALLFOLDER;NVP_PREVIOUS_INSTALLFOLDER;NVP_MACHINE_INSTALLFOLDER;NVP_USER_DESKTOP;NVP_MACHINE_DESKTOP;NVP_CREATE_DESKTOP;NVP_OPTIONS_SET;NVP_WINDOWS_BUILD'
+            SecureCustomProperties = 'OLDPRODUCTS;NEWERPRODUCTS;ALLUSERS;MSIINSTALLPERUSER;INSTALLFOLDER;NVP_PREVIOUS_INSTALLFOLDER;NVP_MACHINE_INSTALLFOLDER;NVP_USER_DESKTOP;NVP_MACHINE_DESKTOP;NVP_CREATE_DESKTOP;NVP_OPEN_DEFAULT_APPS;NVP_OPTIONS_SET;NVP_WINDOWS_BUILD'
         }
         foreach ($entry in $properties.GetEnumerator()) { Add-MsiRow 'Property' @($entry.Key,$entry.Value) }
         Add-MsiRow 'Directory' @('TARGETDIR',$null,'SourceDir')
+        Add-MsiRow 'Directory' @('WindowsFolder','TARGETDIR','.')
         Add-MsiRow 'Directory' @('ProgramFiles64Folder','TARGETDIR','.')
         Add-MsiRow 'Directory' @('INSTALLFOLDER','ProgramFiles64Folder','NextVideoPlayer')
         Add-MsiRow 'Directory' @('DesktopFolder','TARGETDIR','.')
@@ -229,6 +230,9 @@ function New-PlayerMsi {
         Add-MsiRow 'CustomAction' @('RememberDesktopEnabled',51,'NVP_DESKTOP_STATE','1',$null)
         Add-MsiRow 'CustomAction' @('RememberDesktopDisabled',51,'NVP_DESKTOP_STATE','0',$null)
         Add-MsiRow 'CustomAction' @('SetArpInstallLocation',51,'ARPINSTALLLOCATION','[INSTALLFOLDER]',$null)
+        Add-MsiRow 'CustomAction' @('SetExplorerExe',51,'NVP_EXPLORER_EXE','[WindowsFolder]explorer.exe',$null)
+        Add-MsiRow 'CustomAction' @('OpenDefaultAppsUser',242,'NVP_EXPLORER_EXE',('ms-settings:defaultapps?registeredAppUser='+$Config.DisplayName),$null)
+        Add-MsiRow 'CustomAction' @('OpenDefaultAppsMachine',242,'NVP_EXPLORER_EXE',('ms-settings:defaultapps?registeredAppMachine='+$Config.DisplayName),$null)
         Add-MsiRow 'Shortcut' @('AppShortcut','AppMenuFolder','NVP|NextVideoPlayer','StartMenu',
             '[INSTALLFOLDER]NextVideoPlayer.exe',$null,$Config.Description,$null,'AppIcon',0,1,'INSTALLFOLDER',$null,$null,$null,$null)
         Add-MsiRow 'RemoveFile' @('RemoveAppMenu','StartMenu',$null,'AppMenuFolder',2)
@@ -237,6 +241,32 @@ function New-PlayerMsi {
         Add-MsiRow 'Registry' @('DesktopMarker',-1,'Software\NextVideoPlayer\Installer','DesktopShortcutInstalled','#1','DesktopShortcut')
         Add-MsiRow 'Shortcut' @('DesktopShortcut','DesktopFolder','NVP|NextVideoPlayer','DesktopShortcut',
             '[INSTALLFOLDER]NextVideoPlayer.exe',$null,$Config.Description,$null,'AppIcon',0,1,'INSTALLFOLDER',$null,$null,$null,$null)
+        $supportedExtensions = @($Config.SupportedFileTypes)
+        if ($supportedExtensions.Count -gt 0) {
+            $progId = 'NextVideoPlayer.Video'
+            $exeCommand = '"[INSTALLFOLDER]NextVideoPlayer.exe" "%1"'
+            $exeIcon = '"[INSTALLFOLDER]NextVideoPlayer.exe",0'
+            $capabilitiesKey = 'Software\NextVideoPlayer\Capabilities'
+            Add-MsiRow 'Component' @('FileAssociations',(Get-StableMsiGuid 'Component:FileAssociations'),'INSTALLFOLDER',260,$null,'FileAssocCapAppName')
+            Add-MsiRow 'FeatureComponents' @('MainFeature','FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocCapAppName',-1,$capabilitiesKey,'ApplicationName',$Config.DisplayName,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocCapDesc',-1,$capabilitiesKey,'ApplicationDescription',$Config.Description,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocRegApp',-1,'Software\RegisteredApplications',$Config.DisplayName,$capabilitiesKey,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocAppFriendly',-1,'Software\Classes\Applications\NextVideoPlayer.exe','FriendlyAppName',$Config.DisplayName,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocAppIcon',-1,'Software\Classes\Applications\NextVideoPlayer.exe\DefaultIcon',$null,$exeIcon,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocAppCmd',-1,'Software\Classes\Applications\NextVideoPlayer.exe\shell\open\command',$null,$exeCommand,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocProgId',-1,"Software\Classes\$progId",$null,"$($Config.DisplayName) Video",'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocProgIdFriendly',-1,"Software\Classes\$progId",'FriendlyTypeName',"$($Config.DisplayName) Video",'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocProgIdIcon',-1,"Software\Classes\$progId\DefaultIcon",$null,$exeIcon,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocProgIdVerbName',-1,"Software\Classes\$progId\shell\open",'FriendlyAppName',$Config.DisplayName,'FileAssociations')
+            Add-MsiRow 'Registry' @('FileAssocProgIdCmd',-1,"Software\Classes\$progId\shell\open\command",$null,$exeCommand,'FileAssociations')
+            for ($idx = 0; $idx -lt $supportedExtensions.Count; ++$idx) {
+                $ext = [string]$supportedExtensions[$idx]
+                Add-MsiRow 'Registry' @(('FileAssocSupp{0:D2}' -f $idx),-1,'Software\Classes\Applications\NextVideoPlayer.exe\SupportedTypes',$ext,$null,'FileAssociations')
+                Add-MsiRow 'Registry' @(('FileAssocOpenWith{0:D2}' -f $idx),-1,"Software\Classes\$ext\OpenWithProgids",$progId,$null,'FileAssociations')
+                Add-MsiRow 'Registry' @(('FileAssocCapExt{0:D2}' -f $idx),-1,"$capabilitiesKey\FileAssociations",$ext,$progId,'FileAssociations')
+            }
+        }
         Add-MsiRow 'Media' @(1,$files.Count,$null,'#payload.cab',$null,$null)
         Add-MsiStream 'Icon' 'AppIcon' (Join-Path $PayloadDirectory 'NextVideoPlayer.ico')
         Add-MsiStream '_Streams' 'payload.cab' (Join-Path $cabDirectory 'payload.cab')
@@ -270,12 +300,13 @@ function New-PlayerMsi {
         $conditions.InitializeMachineScope = $machineContext
         $conditions.InitializeMachineDirectory = "NOT INSTALLFOLDER AND NVP_MACHINE_PROGRAMS AND $machineContext"
         $conditions.ScopeDlg = 'NOT Installed AND UILevel = 5'
+        $conditions.SetExplorerExe = 'UILevel = 5'
         $conditions.InstallDirDlg = 'NOT Installed AND UILevel = 5'
         $conditions.MaintenanceDlg = 'Installed AND NOT REMOVE AND NOT REINSTALL AND UILevel = 5'
         $conditions.ProgressDlg = 'UILevel = 5'
         foreach ($action in ([ordered]@{FindRelatedProducts=25;AppSearch=50;InitializeMachineScope=60;LaunchConditions=100;
             ScopeDlg=600;ValidateProductID=700;RestoreInstallDirectory=710;RestoreMachineDirectory=715;RestoreDesktopEnabled=720;RestoreDesktopDisabled=725;InitializeMachineDirectory=730;
-            CostInitialize=800;FileCost=900;CostFinalize=1000;InstallDirDlg=1100;MaintenanceDlg=1150;ProgressDlg=1250;ExecuteAction=1300}).GetEnumerator()) {
+            CostInitialize=800;FileCost=900;CostFinalize=1000;SetExplorerExe=1050;InstallDirDlg=1100;MaintenanceDlg=1150;ProgressDlg=1250;ExecuteAction=1300}).GetEnumerator()) {
             $condition = $conditions[$action.Key]
             Add-MsiRow 'InstallUISequence' @($action.Key,$condition,$action.Value)
         }
